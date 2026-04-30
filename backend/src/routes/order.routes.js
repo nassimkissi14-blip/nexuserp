@@ -163,7 +163,7 @@ router.patch('/:id/advance', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'DI
 });
 
 // DELETE /orders/:id - cancel
-router.delete('/:id', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
+router.delete('/:id', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'DIRECTOR', 'MANAGER'), async (req, res, next) => {
   try {
     const existing = await prisma.order.findFirst({ where: { id: req.params.id, companyId: req.companyId } });
     if (!existing) return res.status(404).json({ success: false, message: 'Commande non trouvée' });

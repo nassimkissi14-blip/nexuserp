@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import AnimatedPage from '../../components/ui/AnimatedPage.jsx';
 import { PageHeader, Btn, Modal, FormGrid, FormActions, Field, Input, Select, Textarea, EmptyState } from '../../components/ui/DesignSystem.jsx';
 import apiClient from '../../api/client.js';
+import { invoicesAPI } from '../../api/client.js';
 
 const fmtDZD = n => n >= 1_000_000 ? `${(n/1_000_000).toFixed(1)}M DA` : `${(n/1_000).toFixed(0)}k DA`;
 
@@ -28,6 +29,13 @@ function CreditModal({ item, customers, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  const { data: invoiceData } = useQuery({
+    queryKey: ['invoices-for-credit', form.customerId],
+    queryFn: () => invoicesAPI.getAll({ customerId: form.customerId, limit: 100 }).then(r => r.data || []),
+    enabled: !!form.customerId,
+  });
+  const customerInvoices = (invoiceData || []).filter(inv => !['CANCELLED', 'DRAFT'].includes(inv.status));
+
   const handleSave = async () => {
     if (!form.customerId || !form.amount || !form.issuedAt)
       return toast.error('Client, montant et date requis');
@@ -49,13 +57,20 @@ function CreditModal({ item, customers, onClose, onSaved }) {
     <Modal title={item ? `Modifier — ${item.reference}` : 'Nouvel avoir'} onClose={onClose} width={520}>
       <FormGrid cols={2}>
         <Field label="Client *">
-          <Select value={form.customerId} onChange={e => set('customerId', e.target.value)}>
+          <Select value={form.customerId} onChange={e => { set('customerId', e.target.value); set('invoiceRef', ''); }}>
             <option value="">Sélectionner…</option>
             {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </Select>
         </Field>
         <Field label="Facture liée">
-          <Input value={form.invoiceRef} onChange={e => set('invoiceRef', e.target.value)} placeholder="ex: FAC-2026-0042" />
+          <Select value={form.invoiceRef} onChange={e => set('invoiceRef', e.target.value)} disabled={!form.customerId}>
+            <option value="">{form.customerId ? '— Aucune facture —' : '← Choisir un client d\'abord'}</option>
+            {customerInvoices.map(inv => (
+              <option key={inv.id} value={inv.reference}>
+                {inv.reference} — {new Intl.NumberFormat('fr-DZ').format(inv.totalAmount)} DZD ({inv.status === 'PAID' ? 'Payée' : inv.status === 'SENT' ? 'Envoyée' : 'En retard'})
+              </option>
+            ))}
+          </Select>
         </Field>
         <Field label="Montant (DA) *">
           <Input type="number" value={form.amount} onChange={e => set('amount', e.target.value)} placeholder="0" />

@@ -26,6 +26,7 @@ router.get('/', authenticate, async (req, res, next) => {
     const where = {
       companyId: req.companyId,
       ...(status && status !== 'ALL' && { status }),
+      ...(req.query.customerId && { customerId: req.query.customerId }),
       ...(search && { OR: [
         { reference: { contains: search, mode: 'insensitive' } },
         { customer: { name: { contains: search, mode: 'insensitive' } } },
@@ -207,12 +208,13 @@ router.post('/:id/pay', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'DIRECTO
   } catch (error) { next(error); }
 });
 
-// DELETE /invoices/:id
-router.delete('/:id', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
+// DELETE /invoices/:id - cancel (soft delete)
+router.delete('/:id', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'DIRECTOR', 'MANAGER'), async (req, res, next) => {
   try {
     const existing = await prisma.invoice.findFirst({ where: { id: req.params.id, companyId: req.companyId } });
     if (!existing) return res.status(404).json({ success: false, message: 'Facture non trouvée' });
-    if (existing.status === 'PAID') return res.status(400).json({ success: false, message: 'Impossible de supprimer une facture payée' });
+    if (existing.status === 'PAID') return res.status(400).json({ success: false, message: 'Impossible d\'annuler une facture déjà payée' });
+    if (existing.status === 'CANCELLED') return res.status(400).json({ success: false, message: 'Facture déjà annulée' });
     await prisma.invoice.update({ where: { id: req.params.id }, data: { status: 'CANCELLED' } });
     res.json({ success: true, message: 'Facture annulée' });
   } catch (error) { next(error); }

@@ -463,9 +463,9 @@ export default function InvoicesPage() {
                           <Check size={13} />
                         </button>
                       )}
-                      {['DRAFT'].includes(inv.status) && (
-                        <button className="icon-btn icon-btn--danger" title="Annuler"
-                          onClick={() => { if (window.confirm('Annuler cette facture ?')) cancelMutation.mutate(inv.id); }}>
+                      {['DRAFT', 'SENT', 'OVERDUE'].includes(inv.status) && (
+                        <button className="icon-btn icon-btn--danger" title="Annuler la facture"
+                          onClick={() => { if (window.confirm(`Annuler la facture ${inv.reference} ? Cette action est irréversible.`)) cancelMutation.mutate(inv.id); }}>
                           <X size={13} />
                         </button>
                       )}
@@ -486,6 +486,12 @@ export default function InvoicesPage() {
               <button className="btn btn--ghost" style={{ fontSize: 12 }} onClick={() => printInvoice(modal.invoice, user?.company)}>
                 <Download size={13} /> Télécharger PDF
               </button>
+              {['DRAFT', 'SENT', 'OVERDUE'].includes(modal.invoice.status) && (
+                <button className="btn btn--ghost" style={{ fontSize: 12, color: '#ef4444', borderColor: '#ef4444' }}
+                  onClick={() => { if (window.confirm(`Annuler la facture ${modal.invoice.reference} ?`)) { cancelMutation.mutate(modal.invoice.id); setModal(null); } }}>
+                  <X size={13} /> Annuler
+                </button>
+              )}
               {['DRAFT', 'SENT', 'OVERDUE'].includes(modal.invoice.status) && (
                 <button className="btn btn--primary" style={{ fontSize: 12 }} onClick={() => { payMutation.mutate(modal.invoice.id); setModal(null); }}>
                   <Check size={13} /> Marquer payée
@@ -572,6 +578,11 @@ export default function InvoicesPage() {
               <div className="form-group">
                 <label>Date d'échéance</label>
                 <input type="date" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} />
+                {form.dueDate && new Date(form.dueDate) < new Date(new Date().toDateString()) && (
+                  <div style={{ marginTop: 5, padding: '5px 10px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 6, fontSize: 12, color: '#b91c1c', display: 'flex', alignItems: 'center', gap: 5 }}>
+                    ⚠️ La date d'échéance est dépassée — cette facture sera marquée <strong>En retard</strong>.
+                  </div>
+                )}
               </div>
               <div className="form-group">
                 <label>Taux TVA (%)</label>
