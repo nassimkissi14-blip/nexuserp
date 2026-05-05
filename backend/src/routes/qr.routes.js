@@ -8,6 +8,7 @@ import {
   getTypes,
   getEntities,
   scanQr,
+  scanQrJson,
   deleteQr,
   deleteBatch,
   exportZip,
@@ -31,7 +32,8 @@ import {
 const router = Router();
 
 /* ─── Public ────────────────────────────────────────────────────────────── */
-router.get('/scan/:uniqueCode', scanQr);
+router.get('/scan/:uniqueCode',      scanQr);
+router.get('/scan-json/:uniqueCode', scanQrJson);
 
 /* ─── Authenticated ─────────────────────────────────────────────────────── */
 router.use(authenticate);

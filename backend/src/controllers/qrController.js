@@ -322,6 +322,21 @@ export async function scanQr(req, res, next) {
   } catch (err) { next(err); }
 }
 
+export async function scanQrJson(req, res, next) {
+  try {
+    const { uniqueCode } = req.params;
+    const record = await prisma.qrCode.findUnique({ where: { uniqueCode } });
+    if (!record) return res.status(404).json({ success: false, message: 'QR code non trouvé' });
+
+    await prisma.qrCode.update({
+      where: { uniqueCode },
+      data:  { scans: { increment: 1 }, lastScannedAt: new Date() },
+    });
+
+    res.json({ success: true, data: { ...record, qrData: JSON.parse(record.qrData) } });
+  } catch (err) { next(err); }
+}
+
 function renderQrPage(type, label, data) {
   const TYPE_CONFIG = {
     employee:  { icon: '👤', color: '#6366f1', bg: '#eef2ff', label: 'Employé' },

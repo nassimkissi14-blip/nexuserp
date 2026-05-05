@@ -123,6 +123,7 @@ import CustomReportsPage from './pages/analytics/CustomReportsPage.jsx';
 
 // QR Manager
 import QRManagerPage from './pages/QRManagerPage.jsx';
+import QrScanPage from './pages/QrScanPage.jsx';
 import QRModuleManagerPage from './pages/QRModuleManagerPage.jsx';
 
 // Achats
@@ -215,6 +216,7 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/welcome" element={<WelcomePage />} />
+          <Route path="/qr/:code" element={<QrScanPage />} />
 
           {/* ── Pages protégées ── */}
           <Route element={<ProtectedRoute />}>
