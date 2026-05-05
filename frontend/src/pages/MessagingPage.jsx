@@ -8,7 +8,7 @@ import { Send, Search, Users, MessageSquare, Plus, Paperclip, X, Download, FileT
 import toast from 'react-hot-toast';
 import apiClient from '../api/client.js';
 
-const API_BASE = import.meta.env.VITE_API_URL?.replace('/api/v1', '') || 'https://nexuserp-pupi.onrender.com';
+const API_BASE = import.meta.env.VITE_API_URL?.replace('/api/v1', '') || 'http://localhost:3001';
 
 const formatTime = (date) =>
   new Date(date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });

@@ -11,7 +11,7 @@ export default function ImportModal({ type, label, onClose, onSuccess }) {
 
   const downloadTemplate = () => {
     const a = document.createElement('a');
-    a.href = `${import.meta.env.VITE_API_URL || 'https://nexuserp-pupi.onrender.com/api/v1'}/import/template/${type}`;
+    a.href = `${import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1'}/import/template/${type}`;
     a.setAttribute('download', `template-${type}.xlsx`);
     // Add auth header via fetch
     fetch(a.href, { headers: { Authorization: `Bearer ${localStorage.getItem('nexuserp_token')}` } })

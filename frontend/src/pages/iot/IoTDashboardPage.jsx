@@ -286,7 +286,7 @@ export default function IoTDashboardPage() {
     const token = localStorage.getItem('nexuserp_token');
     if (!token) return;
 
-    const socket = socketIO(import.meta.env.VITE_API_URL?.replace('/api/v1', '') || 'https://nexuserp-pupi.onrender.com', {
+    const socket = socketIO(import.meta.env.VITE_API_URL?.replace('/api/v1', '') || 'http://localhost:3001', {
       auth: { token },
       transports: ['websocket'],
     });

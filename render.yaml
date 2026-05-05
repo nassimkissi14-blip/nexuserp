@@ -2,8 +2,8 @@ services:
   - type: web
     name: nexuserp-backend
     runtime: docker
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     envVars:
       - key: NODE_ENV
         value: production
@@ -16,7 +16,7 @@ services:
       - key: JWT_REFRESH_SECRET
         sync: false
       - key: FRONTEND_URL
-        sync: false
+        value: https://nexuserp-pupi.onrender.com
       - key: ANTHROPIC_API_KEY
         sync: false
     healthCheckPath: /health

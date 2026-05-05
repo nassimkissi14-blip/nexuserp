@@ -103,7 +103,7 @@ function CopyButton({ text }) {
 function IntegrationCard({ software, sessionId }) {
   const [open, setOpen] = useState(false);
   const cfg = SOFTWARE_CFG[software];
-  const baseUrl = (import.meta.env.VITE_API_URL || 'https://nexuserp-pupi.onrender.com/api/v1');
+  const baseUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1');
   const webhookUrl = `${baseUrl}/iot/simulations/${sessionId || '{SESSION_ID}'}/events`;
   const token = localStorage.getItem('nexuserp_token') || '{TOKEN}';
 
@@ -265,7 +265,7 @@ function EventStream({ session }) {
   useEffect(() => {
     const token = localStorage.getItem('nexuserp_token');
     if (!token) return;
-    const socket = socketIO(import.meta.env.VITE_API_URL?.replace('/api/v1', '') || 'https://nexuserp-pupi.onrender.com', {
+    const socket = socketIO(import.meta.env.VITE_API_URL?.replace('/api/v1', '') || 'http://localhost:3001', {
       auth: { token }, transports: ['websocket'],
     });
     socketRef.current = socket;
