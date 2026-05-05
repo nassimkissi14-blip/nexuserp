@@ -138,7 +138,8 @@ app.get('/health', (req, res) => res.json({ status: 'ok', version: '5.0.0' }));
 
 // ── Serve frontend in production ──────────────────────────────────────────────
 if (process.env.NODE_ENV === 'production') {
-  const frontendDist = path.join(__dirname, '../public');
+  const frontendDist = path.join(process.cwd(), 'public');
+  console.log('Frontend dist path:', frontendDist);
   app.use(express.static(frontendDist));
   app.get('*', (req, res) => {
     res.sendFile(path.join(frontendDist, 'index.html'));
