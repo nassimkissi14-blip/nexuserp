@@ -28,16 +28,35 @@ export default function QrScanPage() {
 
   useEffect(() => {
     const BASE = import.meta.env.VITE_API_URL?.replace('/api/v1', '') || '';
-    axios.get(`${BASE}/api/v1/qr/scan-json/${code}`)
-      .then(r => { setRecord(r.data.data); setState('ok'); })
-      .catch(() => setState('error'));
+    let attempts = 0;
+    const tryFetch = () => {
+      attempts++;
+      axios.get(`${BASE}/api/v1/qr/scan-json/${code}`, { timeout: 60000 })
+        .then(r => { setRecord(r.data.data); setState('ok'); })
+        .catch(err => {
+          if (attempts < 3 && (err.code === 'ECONNABORTED' || !err.response)) {
+            setState('waking');
+            setTimeout(tryFetch, 5000);
+          } else {
+            setState('error');
+          }
+        });
+    };
+    tryFetch();
   }, [code]);
 
-  if (state === 'loading') return (
+  if (state === 'loading' || state === 'waking') return (
     <div style={styles.page}>
       <div style={styles.card}>
-        <div style={{ fontSize: 48, marginBottom: 16, animation: 'spin 1s linear infinite' }}>⏳</div>
-        <p style={{ color: '#64748b' }}>Chargement...</p>
+        <div style={{ padding: '40px 24px', textAlign: 'center' }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div>
+          <p style={{ color: '#1e293b', fontWeight: 700, marginBottom: 8 }}>
+            {state === 'waking' ? 'Réveil du serveur...' : 'Chargement...'}
+          </p>
+          <p style={{ color: '#94a3b8', fontSize: 13 }}>
+            {state === 'waking' ? 'Le serveur était en veille, patiente 10-15 secondes.' : 'Récupération des données...'}
+          </p>
+        </div>
       </div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
