@@ -63,11 +63,17 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
+const ALLOWED_ORIGINS = [
+  'https://nexuserp-mu.vercel.app',
+  'https://nexuserp-pupi.onrender.com',
+  process.env.FRONTEND_URL,
+  'http://localhost:5173',
+  'http://localhost:3001',
+].filter(Boolean);
+
 const io = new SocketServer(server, {
   cors: {
-    origin: process.env.NODE_ENV === 'production'
-      ? true
-      : (process.env.FRONTEND_URL || 'http://localhost:5173'),
+    origin: ALLOWED_ORIGINS,
     methods: ['GET', 'POST'],
     credentials: true,
   },
@@ -75,10 +81,7 @@ const io = new SocketServer(server, {
 
 app.set('io', io);
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
-const allowedOrigins = process.env.NODE_ENV === 'production'
-  ? true
-  : (process.env.FRONTEND_URL || 'http://localhost:5173');
-app.use(cors({ origin: allowedOrigins, credentials: true }));
+app.use(cors({ origin: ALLOWED_ORIGINS, credentials: true }));
 // Serve uploaded files (CVs, documents)
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 app.use(express.json({ limit: '10mb' }));
