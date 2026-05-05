@@ -1,6 +1,7 @@
 import express from 'express';
 import http from 'http';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 const __filename = fileURLToPath(import.meta.url);
@@ -136,14 +137,15 @@ app.use(`${API}/simulation`, simulationRoutes);
 
 app.get('/health', (req, res) => res.json({ status: 'ok', version: '5.0.0' }));
 
-// ── Serve frontend in production ──────────────────────────────────────────────
+// ── Serve frontend in production (only if public/ folder exists) ──────────────
 if (process.env.NODE_ENV === 'production') {
   const frontendDist = path.join(process.cwd(), 'public');
-  console.log('Frontend dist path:', frontendDist);
-  app.use(express.static(frontendDist));
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(frontendDist, 'index.html'));
-  });
+  if (fs.existsSync(frontendDist)) {
+    app.use(express.static(frontendDist));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(frontendDist, 'index.html'));
+    });
+  }
 }
 
 app.use((err, req, res, next) => {
