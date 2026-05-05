@@ -175,12 +175,13 @@ export async function generateBatch(req, res, next) {
     }
 
     // 3. Generate QR codes in parallel (batches of 20)
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
     const results = [];
     const BATCH   = 20;
     for (let i = 0; i < toGenerate.length; i += BATCH) {
       const chunk = toGenerate.slice(i, i + BATCH);
       const generated = await Promise.all(
-        chunk.map(entity => generateQr({ type, ...entity }))
+        chunk.map(entity => generateQr({ type, ...entity, baseUrl }))
       );
       results.push(...generated.map((g, j) => ({ entity: chunk[j], ...g })));
     }

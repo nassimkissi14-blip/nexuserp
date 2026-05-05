@@ -372,16 +372,17 @@ export async function generateModuleBatch(req, res, next) {
         return res.json({ success: true, message: 'Tous les QR existent déjà', generated: 0, skipped, data: [] });
       }
 
-      return await _doGenerate({ companyId, module, entities: toGenerate, dept, subDept, skipped, res });
+      return await _doGenerate({ companyId, module, entities: toGenerate, dept, subDept, skipped, res, req });
     }
 
-    return await _doGenerate({ companyId, module, entities, dept, subDept, skipped: 0, res });
+    return await _doGenerate({ companyId, module, entities, dept, subDept, skipped: 0, res, req });
   } catch (err) { next(err); }
 }
 
-async function _doGenerate({ companyId, module, entities, dept, subDept, skipped, res }) {
-  const BATCH = 20;
+async function _doGenerate({ companyId, module, entities, dept, subDept, skipped, res, req }) {
+  const BATCH   = 20;
   const results = [];
+  const baseUrl = req ? `${req.protocol}://${req.get('host')}` : 'http://localhost:3001';
 
   for (let i = 0; i < entities.length; i += BATCH) {
     const chunk = entities.slice(i, i + BATCH);
@@ -390,6 +391,7 @@ async function _doGenerate({ companyId, module, entities, dept, subDept, skipped
         type: module,
         referenceId: entity.referenceId,
         name:        entity.name,
+        baseUrl,
         extraData:   {
           ...entity.extraData,
           department:     dept?.name    || null,

@@ -29,19 +29,15 @@ export function buildQrPayload({ type, referenceId, name, extraData = {} }) {
 }
 
 /**
- * Render a QR code that encodes a scan URL (not raw JSON).
- * Scanning opens the NexusERP card page directly in the browser.
+ * Render a QR code that encodes a scan URL.
+ * baseUrl is passed from the request so it works on any host (local IP, Render, etc.)
  */
-export async function renderQrPng(uniqueCode) {
-  const base = process.env.BASE_URL
-    || (process.env.NODE_ENV === 'production'
-        ? 'https://nexuserp-pupi.onrender.com'
-        : `http://localhost:3001`);
-  const url = `${base}/api/v1/qr/scan/${uniqueCode}`;
+export async function renderQrPng(uniqueCode, baseUrl) {
+  const url = `${baseUrl}/api/v1/qr/scan/${uniqueCode}`;
   return QRCode.toDataURL(url, {
     errorCorrectionLevel: 'M',
     type:                 'image/png',
-    width:                256,
+    width:                300,
     margin:               2,
     color: { dark: '#0f172a', light: '#ffffff' },
   });
@@ -50,8 +46,8 @@ export async function renderQrPng(uniqueCode) {
 /**
  * Full pipeline: build payload → render PNG → return everything.
  */
-export async function generateQr({ type, referenceId, name, extraData = {} }) {
+export async function generateQr({ type, referenceId, name, extraData = {}, baseUrl = 'http://localhost:3001' }) {
   const payload  = buildQrPayload({ type, referenceId, name, extraData });
-  const imageB64 = await renderQrPng(payload.unique_code);
+  const imageB64 = await renderQrPng(payload.unique_code, baseUrl);
   return { payload, imageB64, uniqueCode: payload.unique_code };
 }
