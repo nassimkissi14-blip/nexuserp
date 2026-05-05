@@ -302,21 +302,120 @@ export async function getEntities(req, res, next) {
 
 /**
  * GET /qr/scan/:uniqueCode
- * Public endpoint: returns QR data and increments scan counter.
+ * Public endpoint: returns an animated HTML card instead of raw JSON.
  */
 export async function scanQr(req, res, next) {
   try {
     const { uniqueCode } = req.params;
     const record = await prisma.qrCode.findUnique({ where: { uniqueCode } });
-    if (!record) return res.status(404).json({ success: false, message: 'QR code non trouvé' });
+    if (!record) return res.status(404).send(renderQrPage(null, null, null));
 
     await prisma.qrCode.update({
       where: { uniqueCode },
       data:  { scans: { increment: 1 }, lastScannedAt: new Date() },
     });
 
-    res.json({ success: true, data: { ...record, qrData: JSON.parse(record.qrData) } });
+    const qrData = JSON.parse(record.qrData);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(renderQrPage(record.type, record.label, qrData));
   } catch (err) { next(err); }
+}
+
+function renderQrPage(type, label, data) {
+  const TYPE_CONFIG = {
+    employee:  { icon: '👤', color: '#6366f1', bg: '#eef2ff', label: 'Employé' },
+    product:   { icon: '📦', color: '#f59e0b', bg: '#fffbeb', label: 'Produit' },
+    equipment: { icon: '🔧', color: '#10b981', bg: '#ecfdf5', label: 'Équipement' },
+    supplier:  { icon: '🏭', color: '#3b82f6', bg: '#eff6ff', label: 'Fournisseur' },
+    customer:  { icon: '🤝', color: '#ec4899', bg: '#fdf2f8', label: 'Client' },
+    order:     { icon: '📋', color: '#8b5cf6', bg: '#f5f3ff', label: 'Commande' },
+    invoice:   { icon: '🧾', color: '#ef4444', bg: '#fef2f2', label: 'Facture' },
+    department:{ icon: '🏢', color: '#06b6d4', bg: '#ecfeff', label: 'Département' },
+  };
+
+  if (!data) {
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>QR Invalide</title>
+    <style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f1f5f9;font-family:system-ui,sans-serif}
+    .card{background:#fff;border-radius:24px;padding:48px 40px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.12);max-width:360px;width:90%}
+    .icon{font-size:64px;margin-bottom:16px}.title{font-size:22px;font-weight:700;color:#ef4444}.sub{color:#94a3b8;margin-top:8px}</style></head>
+    <body><div class="card"><div class="icon">❌</div><div class="title">QR Code invalide</div><div class="sub">Ce code n'existe pas ou a été supprimé.</div></div></body></html>`;
+  }
+
+  const cfg   = TYPE_CONFIG[type] || { icon: '🔖', color: '#6366f1', bg: '#eef2ff', label: type || 'Inconnu' };
+  const name  = label || data?.name || '—';
+  const extra = data?.extraData || {};
+
+  const rows = Object.entries(extra)
+    .filter(([, v]) => v !== null && v !== undefined && v !== '')
+    .map(([k, v]) => {
+      const labels = {
+        position: 'Poste', department: 'Département', email: 'Email',
+        phone: 'Téléphone', sku: 'Référence', category: 'Catégorie',
+        stock: 'Stock', location: 'Emplacement', type: 'Type',
+        status: 'Statut', serial: 'N° Série', city: 'Ville',
+        customer: 'Client', total: 'Montant',
+      };
+      return `<tr><td>${labels[k] || k}</td><td><strong>${v}</strong></td></tr>`;
+    }).join('');
+
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${name} — NexusERP</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{min-height:100vh;display:flex;align-items:center;justify-content:center;
+      background:linear-gradient(135deg,${cfg.color}22 0%,${cfg.bg} 100%);
+      font-family:system-ui,-apple-system,sans-serif;padding:20px}
+    .card{background:#fff;border-radius:28px;padding:0;max-width:380px;width:100%;
+      box-shadow:0 24px 64px rgba(0,0,0,.14);overflow:hidden;
+      animation:slideUp .5s cubic-bezier(.22,1,.36,1) both}
+    @keyframes slideUp{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:translateY(0)}}
+    .header{background:linear-gradient(135deg,${cfg.color},${cfg.color}cc);
+      padding:40px 32px 32px;text-align:center;position:relative}
+    .pulse{width:90px;height:90px;border-radius:50%;background:rgba(255,255,255,.2);
+      display:flex;align-items:center;justify-content:center;margin:0 auto 16px;
+      font-size:44px;animation:pulse 2s ease-in-out infinite}
+    @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,255,255,.4)}
+      50%{box-shadow:0 0 0 16px rgba(255,255,255,.0)}}
+    .badge{display:inline-block;background:rgba(255,255,255,.25);color:#fff;
+      font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+      padding:4px 12px;border-radius:20px;margin-bottom:12px}
+    .name{font-size:26px;font-weight:800;color:#fff;letter-spacing:-.5px;line-height:1.2}
+    .body{padding:28px 28px 32px}
+    table{width:100%;border-collapse:collapse}
+    tr{border-bottom:1px solid #f1f5f9}
+    tr:last-child{border-bottom:none}
+    td{padding:11px 4px;font-size:14px;color:#64748b;vertical-align:top}
+    td:first-child{width:44%;color:#94a3b8;font-size:13px}
+    td strong{color:#1e293b;font-weight:600}
+    .footer{text-align:center;padding:0 28px 24px;color:#cbd5e1;font-size:12px}
+    .check{width:28px;height:28px;background:${cfg.color};border-radius:50%;
+      display:inline-flex;align-items:center;justify-content:center;
+      color:#fff;font-size:14px;margin-right:6px;vertical-align:middle}
+    .verified{display:flex;align-items:center;justify-content:center;
+      background:${cfg.bg};border-radius:12px;padding:10px 16px;
+      color:${cfg.color};font-size:13px;font-weight:600;margin-bottom:16px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="badge">${cfg.label}</div>
+      <div class="pulse">${cfg.icon}</div>
+      <div class="name">${name}</div>
+    </div>
+    <div class="body">
+      <div class="verified"><span class="check">✓</span> Identité vérifiée — NexusERP</div>
+      ${rows ? `<table>${rows}</table>` : ''}
+    </div>
+    <div class="footer">Scanné le ${new Date().toLocaleDateString('fr-DZ', { day:'2-digit', month:'long', year:'numeric' })}</div>
+  </div>
+</body>
+</html>`;
 }
 
 /**
