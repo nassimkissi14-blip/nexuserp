@@ -29,21 +29,21 @@ export function buildQrPayload({ type, referenceId, name, extraData = {} }) {
 }
 
 /**
- * Render a QR payload to a base64-encoded PNG data URL.
- * @param {object} payload  — the structured QR data object
- * @returns {Promise<string>} — data:image/png;base64,...
+ * Render a QR code that encodes a scan URL (not raw JSON).
+ * Scanning opens the NexusERP card page directly in the browser.
  */
-export async function renderQrPng(payload) {
-  const json = JSON.stringify(payload);
-  return QRCode.toDataURL(json, {
+export async function renderQrPng(uniqueCode) {
+  const base = process.env.BASE_URL
+    || (process.env.NODE_ENV === 'production'
+        ? 'https://nexuserp-pupi.onrender.com'
+        : `http://localhost:3001`);
+  const url = `${base}/api/v1/qr/scan/${uniqueCode}`;
+  return QRCode.toDataURL(url, {
     errorCorrectionLevel: 'M',
     type:                 'image/png',
     width:                256,
     margin:               2,
-    color: {
-      dark:  '#0f172a',
-      light: '#ffffff',
-    },
+    color: { dark: '#0f172a', light: '#ffffff' },
   });
 }
 
@@ -52,6 +52,6 @@ export async function renderQrPng(payload) {
  */
 export async function generateQr({ type, referenceId, name, extraData = {} }) {
   const payload  = buildQrPayload({ type, referenceId, name, extraData });
-  const imageB64 = await renderQrPng(payload);
+  const imageB64 = await renderQrPng(payload.unique_code);
   return { payload, imageB64, uniqueCode: payload.unique_code };
 }

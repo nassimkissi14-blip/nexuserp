@@ -17,12 +17,12 @@ const RESOLVERS = {
     if (department)        where.department  = department;
     const rows = await prisma.employee.findMany({
       where,
-      select: { id: true, firstName: true, lastName: true, position: true, department: true, email: true },
+      select: { id: true, firstName: true, lastName: true, position: true, department: true, email: true, phone: true },
     });
     return rows.map(e => ({
       referenceId: e.id,
       name:        `${e.firstName} ${e.lastName}`,
-      extraData:   { position: e.position, department: e.department, email: e.email },
+      extraData:   { position: e.position, department: e.department, phone: e.phone, email: e.email },
     }));
   },
 
@@ -336,9 +336,9 @@ function renderQrPage(type, label, data) {
   if (!data) {
     return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <title>QR Invalide</title>
-    <style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f1f5f9;font-family:system-ui,sans-serif}
+    <style>*{box-sizing:border-box;margin:0;padding:0}body{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f1f5f9;font-family:system-ui,sans-serif}
     .card{background:#fff;border-radius:24px;padding:48px 40px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.12);max-width:360px;width:90%}
-    .icon{font-size:64px;margin-bottom:16px}.title{font-size:22px;font-weight:700;color:#ef4444}.sub{color:#94a3b8;margin-top:8px}</style></head>
+    .icon{font-size:64px;margin-bottom:16px}.title{font-size:22px;font-weight:700;color:#ef4444}.sub{color:#94a3b8;margin-top:8px;font-size:14px}</style></head>
     <body><div class="card"><div class="icon">❌</div><div class="title">QR Code invalide</div><div class="sub">Ce code n'existe pas ou a été supprimé.</div></div></body></html>`;
   }
 
@@ -346,73 +346,121 @@ function renderQrPage(type, label, data) {
   const name  = label || data?.name || '—';
   const extra = data?.extraData || {};
 
-  const rows = Object.entries(extra)
-    .filter(([, v]) => v !== null && v !== undefined && v !== '')
-    .map(([k, v]) => {
-      const labels = {
-        position: 'Poste', department: 'Département', email: 'Email',
-        phone: 'Téléphone', sku: 'Référence', category: 'Catégorie',
-        stock: 'Stock', location: 'Emplacement', type: 'Type',
-        status: 'Statut', serial: 'N° Série', city: 'Ville',
-        customer: 'Client', total: 'Montant',
-      };
-      return `<tr><td>${labels[k] || k}</td><td><strong>${v}</strong></td></tr>`;
-    }).join('');
+  const FIELD_LABELS = {
+    position: 'Poste', department: 'Département', email: 'Email',
+    phone: 'Téléphone', sku: 'Référence', category: 'Catégorie',
+    stock: 'Stock', location: 'Emplacement', type: 'Type',
+    status: 'Statut', serial: 'N° Série', city: 'Ville',
+    customer: 'Client', total: 'Montant',
+  };
+
+  // Action buttons (call + email)
+  const phone = extra.phone || extra.Phone || null;
+  const email = extra.email || extra.Email || null;
+
+  const actionBtns = [
+    phone ? `<a href="tel:${phone}" class="btn btn-call">📞 Appeler</a>` : '',
+    email ? `<a href="mailto:${email}" class="btn btn-mail">✉️ Email</a>` : '',
+  ].filter(Boolean).join('');
+
+  const infoRows = Object.entries(extra)
+    .filter(([k, v]) => v !== null && v !== undefined && v !== '' && k !== 'phone' && k !== 'email')
+    .map(([k, v]) => `
+      <div class="row">
+        <span class="row-label">${FIELD_LABELS[k] || k}</span>
+        <span class="row-val">${v}</span>
+      </div>`).join('');
+
+  const phoneRow = phone ? `<div class="row"><span class="row-label">Téléphone</span><a href="tel:${phone}" class="row-val link">${phone}</a></div>` : '';
+  const emailRow = email ? `<div class="row"><span class="row-label">Email</span><a href="mailto:${email}" class="row-val link">${email}</a></div>` : '';
+
+  const scanDate = new Date().toLocaleDateString('fr-DZ', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
   return `<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
   <title>${name} — NexusERP</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{min-height:100vh;display:flex;align-items:center;justify-content:center;
-      background:linear-gradient(135deg,${cfg.color}22 0%,${cfg.bg} 100%);
-      font-family:system-ui,-apple-system,sans-serif;padding:20px}
-    .card{background:#fff;border-radius:28px;padding:0;max-width:380px;width:100%;
-      box-shadow:0 24px 64px rgba(0,0,0,.14);overflow:hidden;
-      animation:slideUp .5s cubic-bezier(.22,1,.36,1) both}
-    @keyframes slideUp{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:translateY(0)}}
-    .header{background:linear-gradient(135deg,${cfg.color},${cfg.color}cc);
-      padding:40px 32px 32px;text-align:center;position:relative}
-    .pulse{width:90px;height:90px;border-radius:50%;background:rgba(255,255,255,.2);
-      display:flex;align-items:center;justify-content:center;margin:0 auto 16px;
-      font-size:44px;animation:pulse 2s ease-in-out infinite}
-    @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,255,255,.4)}
-      50%{box-shadow:0 0 0 16px rgba(255,255,255,.0)}}
-    .badge{display:inline-block;background:rgba(255,255,255,.25);color:#fff;
-      font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
-      padding:4px 12px;border-radius:20px;margin-bottom:12px}
-    .name{font-size:26px;font-weight:800;color:#fff;letter-spacing:-.5px;line-height:1.2}
-    .body{padding:28px 28px 32px}
-    table{width:100%;border-collapse:collapse}
-    tr{border-bottom:1px solid #f1f5f9}
-    tr:last-child{border-bottom:none}
-    td{padding:11px 4px;font-size:14px;color:#64748b;vertical-align:top}
-    td:first-child{width:44%;color:#94a3b8;font-size:13px}
-    td strong{color:#1e293b;font-weight:600}
-    .footer{text-align:center;padding:0 28px 24px;color:#cbd5e1;font-size:12px}
-    .check{width:28px;height:28px;background:${cfg.color};border-radius:50%;
-      display:inline-flex;align-items:center;justify-content:center;
-      color:#fff;font-size:14px;margin-right:6px;vertical-align:middle}
-    .verified{display:flex;align-items:center;justify-content:center;
-      background:${cfg.bg};border-radius:12px;padding:10px 16px;
-      color:${cfg.color};font-size:13px;font-weight:600;margin-bottom:16px}
+    body{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;
+      background:linear-gradient(160deg,${cfg.color}18 0%,#f8fafc 60%);
+      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:16px}
+
+    .card{background:#fff;border-radius:24px;width:100%;max-width:400px;
+      box-shadow:0 8px 40px rgba(0,0,0,.12),0 1px 3px rgba(0,0,0,.06);
+      overflow:hidden;animation:up .45s cubic-bezier(.22,1,.36,1) both}
+    @keyframes up{from{opacity:0;transform:translateY(32px)}to{opacity:1;transform:none}}
+
+    /* ── Header ── */
+    .hd{background:linear-gradient(135deg,${cfg.color} 0%,${cfg.color}dd 100%);
+      padding:32px 24px 28px;text-align:center}
+    .avatar{width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,.22);
+      display:flex;align-items:center;justify-content:center;margin:0 auto 14px;
+      font-size:40px;animation:ring 2.4s ease-in-out infinite}
+    @keyframes ring{0%,100%{box-shadow:0 0 0 0 rgba(255,255,255,.5)}
+      60%{box-shadow:0 0 0 14px rgba(255,255,255,.0)}}
+    .badge-type{display:inline-block;background:rgba(255,255,255,.22);color:#fff;
+      font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
+      padding:3px 12px;border-radius:20px;margin-bottom:10px}
+    .hd-name{font-size:24px;font-weight:800;color:#fff;line-height:1.25;letter-spacing:-.3px}
+
+    /* ── Verified bar ── */
+    .verified{display:flex;align-items:center;gap:8px;background:${cfg.bg};
+      padding:10px 20px;font-size:12.5px;font-weight:600;color:${cfg.color}}
+    .verified svg{flex-shrink:0}
+
+    /* ── Info rows ── */
+    .info{padding:4px 20px 8px}
+    .row{display:flex;align-items:baseline;justify-content:space-between;
+      padding:11px 0;border-bottom:1px solid #f1f5f9;gap:12px}
+    .row:last-child{border:none}
+    .row-label{font-size:12px;color:#94a3b8;white-space:nowrap;flex-shrink:0}
+    .row-val{font-size:14px;font-weight:600;color:#1e293b;text-align:right;word-break:break-word}
+    a.link{color:${cfg.color};text-decoration:none}
+
+    /* ── Action buttons ── */
+    .actions{display:flex;gap:10px;padding:16px 20px 20px}
+    .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
+      padding:13px 8px;border-radius:14px;font-size:14px;font-weight:700;
+      text-decoration:none;border:none;cursor:pointer;transition:opacity .15s}
+    .btn:active{opacity:.8}
+    .btn-call{background:${cfg.color};color:#fff}
+    .btn-mail{background:${cfg.bg};color:${cfg.color};border:1.5px solid ${cfg.color}33}
+
+    /* ── Footer ── */
+    .foot{text-align:center;padding:0 20px 18px;font-size:11px;color:#cbd5e1}
+    .nexus-logo{font-weight:800;color:${cfg.color};font-size:13px;letter-spacing:-.3px}
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="header">
-      <div class="badge">${cfg.label}</div>
-      <div class="pulse">${cfg.icon}</div>
-      <div class="name">${name}</div>
+    <div class="hd">
+      <div class="badge-type">${cfg.label}</div>
+      <div class="avatar">${cfg.icon}</div>
+      <div class="hd-name">${name}</div>
     </div>
-    <div class="body">
-      <div class="verified"><span class="check">✓</span> Identité vérifiée — NexusERP</div>
-      ${rows ? `<table>${rows}</table>` : ''}
+
+    <div class="verified">
+      <svg width="16" height="16" viewBox="0 0 20 20" fill="${cfg.color}">
+        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
+      </svg>
+      Identité vérifiée via NexusERP
     </div>
-    <div class="footer">Scanné le ${new Date().toLocaleDateString('fr-DZ', { day:'2-digit', month:'long', year:'numeric' })}</div>
+
+    <div class="info">
+      ${phoneRow}
+      ${emailRow}
+      ${infoRows}
+    </div>
+
+    ${actionBtns ? `<div class="actions">${actionBtns}</div>` : ''}
+
+    <div class="foot">
+      <div class="nexus-logo">NexusERP</div>
+      Scanné le ${scanDate}
+    </div>
   </div>
 </body>
 </html>`;
