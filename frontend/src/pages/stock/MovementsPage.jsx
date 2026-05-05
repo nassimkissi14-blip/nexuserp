@@ -4,6 +4,7 @@ import { productsAPI } from '../../api/client.js';
 import apiClient from '../../api/client.js';
 import { Plus, TrendingUp, TrendingDown, RefreshCw, Edit2, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 
 const movementsAPI = {
   getAll:  (params) => apiClient.get('/movements', { params }),
@@ -82,6 +83,7 @@ const MovementForm = ({ products, initial, onSubmit, onCancel, isLoading, isEdit
 
 export default function MovementsPage() {
   const queryClient = useQueryClient();
+  const { confirm, modal: confirmModal } = useConfirm();
   const [filterType, setFilterType] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
@@ -133,9 +135,9 @@ export default function MovementsPage() {
     onError: (err) => toast.error(err.message || 'Erreur'),
   });
 
-  const handleDelete = (m) => {
-    if (!window.confirm(`Supprimer ce mouvement (${TYPE[m.type]?.label} × ${m.quantity} de ${m.product?.name}) ?\nLe stock sera corrigé automatiquement.`)) return;
-    deleteMutation.mutate(m.id);
+  const handleDelete = async (m) => {
+    const ok = await confirm({ title: 'Supprimer ce mouvement ?', message: `${TYPE[m.type]?.label} × ${m.quantity} de ${m.product?.name}. Le stock sera corrigé automatiquement.`, confirmLabel: 'Supprimer', variant: 'danger' });
+    if (ok) deleteMutation.mutate(m.id);
   };
 
   const movements = data?.data || [];
@@ -267,6 +269,7 @@ export default function MovementsPage() {
           />
         </Modal>
       )}
+      {confirmModal}
     </div>
   );
 }

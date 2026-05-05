@@ -129,6 +129,21 @@ export const useModulesStore = create((set, get) => ({
     }
   },
 
+  reorderModules: async (newOrder) => {
+    // Optimistic update
+    set((state) => ({
+      modules: state.modules.map((m) => {
+        const found = newOrder.find((o) => o.id === m.id);
+        return found ? { ...m, sortOrder: found.sortOrder } : m;
+      }),
+    }));
+    try {
+      await modulesAPI.reorder(newOrder);
+    } catch (_) {
+      get().fetchModules();
+    }
+  },
+
   applyRemoteToggle: (moduleId, enabled) => {
     set((state) => ({
       modules: state.modules.map((m) =>

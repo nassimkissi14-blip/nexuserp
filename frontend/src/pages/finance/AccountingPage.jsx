@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from '../../api/client.js';
 import { Plus, BookOpen, CheckCircle, XCircle, Trash2, Edit2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 
 const accountingAPI = {
   getAll: (params) => apiClient.get('/accounting', { params }),
@@ -143,6 +144,7 @@ function JournalForm({ onSubmit, onCancel, isLoading }) {
 
 export default function AccountingPage() {
   const queryClient = useQueryClient();
+  const { confirm, modal: confirmModal } = useConfirm();
   const [modal, setModal] = useState(null); // null | 'create' | { type:'edit', entry }
   const [editForm, setEditForm] = useState({ date: '', description: '' });
   const [page, setPage] = useState(1);
@@ -217,7 +219,7 @@ export default function AccountingPage() {
                   <td>
                     <div className="table-actions">
                       <button className="icon-btn" title="Modifier" onClick={e => { e.stopPropagation(); setEditForm({ date: entry.date?.slice(0,10) || '', description: entry.description }); setModal({ type: 'edit', entry }); }}><Edit2 size={13} /></button>
-                      <button className="icon-btn icon-btn--danger" title="Supprimer" onClick={e => { e.stopPropagation(); if (window.confirm('Supprimer cette écriture ?')) deleteMutation.mutate(entry.id); }}><Trash2 size={13} /></button>
+                      <button className="icon-btn icon-btn--danger" title="Supprimer" onClick={async e => { e.stopPropagation(); const ok = await confirm({ title: 'Supprimer cette écriture ?', confirmLabel: 'Supprimer', variant: 'danger' }); if (ok) deleteMutation.mutate(entry.id); }}><Trash2 size={13} /></button>
                     </div>
                   </td>
                 </tr>
@@ -283,6 +285,7 @@ export default function AccountingPage() {
           </form>
         </Modal>
       )}
+      {confirmModal}
     </div>
   );
 }

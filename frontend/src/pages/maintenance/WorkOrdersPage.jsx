@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Wrench, Play, CheckCircle, Clock, XCircle, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 import apiClient from '../../api/client.js';
 import AnimatedPage from '../../components/ui/AnimatedPage.jsx';
 import {
@@ -189,6 +190,7 @@ function OrderCard({ order, onEdit, onStart, onComplete, onCancel }) {
 /* ── MAIN PAGE ──────────────────────────────── */
 export default function WorkOrdersPage({ defaultType }) {
   const qc = useQueryClient();
+  const { confirm, modal: confirmModal } = useConfirm();
   const [modal, setModal]         = useState(null);
   const [search, setSearch]       = useState('');
   const [statusFilter, setStatus] = useState('');
@@ -339,8 +341,9 @@ export default function WorkOrdersPage({ defaultType }) {
                 onEdit={() => setModal({ type: 'edit', data: o })}
                 onStart={() => quickStatus(o.id, 'IN_PROGRESS')}
                 onComplete={() => quickStatus(o.id, 'COMPLETED')}
-                onCancel={() => {
-                  if (window.confirm('Annuler cet ordre ?')) quickStatus(o.id, 'CANCELLED');
+                onCancel={async () => {
+                  const ok = await confirm({ title: 'Annuler cet ordre ?', confirmLabel: 'Annuler', variant: 'warning' });
+                  if (ok) quickStatus(o.id, 'CANCELLED');
                 }}
               />
             ))}
@@ -363,6 +366,7 @@ export default function WorkOrdersPage({ defaultType }) {
           />
         )}
       </div>
+      {confirmModal}
     </AnimatedPage>
   );
 }

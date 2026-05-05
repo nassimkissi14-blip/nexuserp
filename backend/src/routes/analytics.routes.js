@@ -33,14 +33,27 @@ function detectAnomalies(series, valueKey, threshold = 2) {
 router.get('/overview', async (req, res, next) => {
   try {
     const { companyId } = req;
+    const { period = 'month' } = req.query;
     const now  = new Date();
     const curY = now.getFullYear();
     const curM = now.getMonth();
 
-    /* ── Window boundaries ── */
-    const thisMonthStart  = mStart(curY, curM);
-    const lastMonthStart  = mStart(curY, curM - 1);
-    const lastMonthEnd    = mEnd(curY, curM - 1);
+    /* ── Window boundaries based on period ── */
+    let thisMonthStart, lastMonthStart, lastMonthEnd;
+    if (period === 'today') {
+      thisMonthStart = new Date(curY, curM, now.getDate(), 0, 0, 0);
+      const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+      lastMonthStart = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 0, 0, 0);
+      lastMonthEnd   = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59);
+    } else if (period === 'year') {
+      thisMonthStart = new Date(curY, 0, 1);
+      lastMonthStart = new Date(curY - 1, 0, 1);
+      lastMonthEnd   = new Date(curY - 1, 11, 31, 23, 59, 59);
+    } else {
+      thisMonthStart = mStart(curY, curM);
+      lastMonthStart = mStart(curY, curM - 1);
+      lastMonthEnd   = mEnd(curY, curM - 1);
+    }
     const sixMonthsAgo    = mStart(curY, curM - 5);
     const thirtyDaysAgo   = new Date(now); thirtyDaysAgo.setDate(now.getDate() - 29);
 

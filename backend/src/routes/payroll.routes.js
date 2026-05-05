@@ -14,7 +14,7 @@ router.get('/', authenticate, async (req, res, next) => {
     const entries = await prisma.payroll.findMany({
       where: { companyId: req.companyId, month, year },
       include: {
-        employee: { select: { id: true, firstName: true, lastName: true, department: true, position: true } },
+        employee: { select: { id: true, firstName: true, lastName: true, department: true, position: true, contractType: true } },
       },
       orderBy: [{ employee: { department: 'asc' } }, { employee: { lastName: 'asc' } }],
     });
@@ -40,25 +40,31 @@ router.post('/generate', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'DIRECT
 
     // upsert: create if not exists, skip update if already exists
     const results = await Promise.all(
-      employees.map(emp =>
-        prisma.payroll.upsert({
+      employees.map(emp => {
+        const base = emp.salary || 0;
+        const cnas = Math.round(base * 0.09);       // 9% CNAS salarié
+        const irg  = Math.max(0, Math.round((base - cnas - 10000) * 0.1)); // IRG simplifié
+        const deductions = cnas + irg;
+        const netSalary  = base - deductions;
+
+        return prisma.payroll.upsert({
           where: { employeeId_month_year: { employeeId: emp.id, month, year } },
           create: {
             companyId: req.companyId,
             employeeId: emp.id,
             month,
             year,
-            baseSalary: emp.salary,
+            baseSalary: base,
             bonus: 0,
-            deductions: 0,
-            netSalary: emp.salary,
+            deductions,
+            netSalary: Math.max(0, netSalary),
           },
           update: {},
           include: {
-            employee: { select: { id: true, firstName: true, lastName: true, department: true, position: true } },
+            employee: { select: { id: true, firstName: true, lastName: true, department: true, position: true, contractType: true } },
           },
-        })
-      )
+        });
+      })
     );
 
     res.json({ success: true, data: results, message: `Paie générée pour ${results.length} employé(s)` });
@@ -81,7 +87,7 @@ router.patch('/:id', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'DIRECTOR',
       where: { id: req.params.id },
       data: { bonus, deductions, netSalary: entry.baseSalary + bonus - deductions },
       include: {
-        employee: { select: { id: true, firstName: true, lastName: true, department: true, position: true } },
+        employee: { select: { id: true, firstName: true, lastName: true, department: true, position: true, contractType: true } },
       },
     });
 
@@ -104,7 +110,7 @@ router.patch('/:id/pay', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'DIRECT
         where: { id: req.params.id },
         data: { paidAt: now },
         include: {
-          employee: { select: { id: true, firstName: true, lastName: true, department: true, position: true } },
+          employee: { select: { id: true, firstName: true, lastName: true, department: true, position: true, contractType: true } },
         },
       });
 

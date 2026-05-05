@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, Eye, Edit2, Trash2 } from 'lucide-react';
 import { projectsAPI } from '../../api/client.js';
 import toast from 'react-hot-toast';
+import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const container = {
@@ -141,6 +142,7 @@ const emptyForm = () => ({
 
 export default function ProjectsPage() {
   const queryClient = useQueryClient();
+  const { confirm, modal: confirmModal } = useConfirm();
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [viewMode, setViewMode] = useState('cards');
@@ -182,8 +184,9 @@ export default function ProjectsPage() {
     }
   };
 
-  const handleDelete = (id) => {
-    if (window.confirm('Supprimer ce projet et toutes ses tâches ?')) deleteMutation.mutate(id);
+  const handleDelete = async (id) => {
+    const ok = await confirm({ title: 'Supprimer ce projet ?', message: 'Toutes les tâches associées seront aussi supprimées.', confirmLabel: 'Supprimer', variant: 'danger' });
+    if (ok) deleteMutation.mutate(id);
   };
 
   const totalBudget = projects.reduce((s, p) => s + (p.budget || 0), 0);
@@ -393,6 +396,7 @@ export default function ProjectsPage() {
           </div>
         </Modal>
       )}
+      {confirmModal}
     </motion.div>
   );
 }

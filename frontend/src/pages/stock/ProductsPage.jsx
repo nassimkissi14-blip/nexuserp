@@ -1,16 +1,24 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productsAPI } from '../../api/client.js';
-import { Search, Plus, MoreVertical, Edit2, Trash2, AlertTriangle, Printer, Upload } from 'lucide-react';
+import { Search, Plus, MoreVertical, Edit2, Trash2, AlertTriangle, Printer } from 'lucide-react';
+import { TableSkeleton } from '../../components/ui/Skeleton.jsx';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
-import ImportModal from '../../components/ImportModal.jsx';
+import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.07, delayChildren: 0.04 } } };
 const fadeUp = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0, transition: { duration: 0.36, ease: [0.22, 1, 0.36, 1] } } };
 import { QrButton, QrBatchButton } from '../../components/ui/QrCodeWidget.jsx';
 
-const DEFAULT_CATEGORIES = ['Équipements', 'Matériaux', 'Consommables', 'Pièces détachées'];
+const DEFAULT_CATEGORIES = [
+  'Matières premières',
+  'Consommables',
+  'Produits finis',
+  'Pièces détachées',
+  'Équipements',
+  'Marchandises',
+];
 const fmt = (n) => new Intl.NumberFormat('fr-DZ').format(Number(n) || 0) + ' DZD';
 
 /* ─── Print product list ─────────────────────────────────────── */
@@ -171,12 +179,29 @@ const Modal = ({ title, onClose, children }) => (
 );
 
 /* ─── Product form ───────────────────────────────────────────── */
-const ProductForm = ({ initial, onSubmit, onCancel, isLoading }) => {
+const ProductForm = ({ initial, onSubmit, onCancel, isLoading, products = [] }) => {
+  const allCategories = DEFAULT_CATEGORIES;
+
+  const isCustomInitial = initial?.category && !DEFAULT_CATEGORIES.includes(initial.category);
   const [form, setForm] = useState(initial || {
     name: '', sku: '', category: DEFAULT_CATEGORIES[0], unit: 'pcs',
     buyPrice: '', sellPrice: '', stockQty: '', minStockQty: '', location: '', description: '',
   });
+  const [customCat, setCustomCat] = useState(isCustomInitial ? initial.category : '');
+  const [showCustom, setShowCustom] = useState(isCustomInitial);
+
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const handleCategoryChange = (val) => {
+    if (val === '__autre__') {
+      setShowCustom(true);
+      set('category', customCat || '');
+    } else {
+      setShowCustom(false);
+      setCustomCat('');
+      set('category', val);
+    }
+  };
 
   return (
     <form onSubmit={e => { e.preventDefault(); onSubmit(form); }}>
@@ -191,9 +216,19 @@ const ProductForm = ({ initial, onSubmit, onCancel, isLoading }) => {
         </div>
         <div className="form-group">
           <label>Catégorie</label>
-          <select value={form.category || ''} onChange={e => set('category', e.target.value)}>
-            {DEFAULT_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+          <select value={showCustom ? '__autre__' : (form.category || '')} onChange={e => handleCategoryChange(e.target.value)}>
+            {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
+            <option value="__autre__">+ Nouvelle catégorie…</option>
           </select>
+          {showCustom && (
+            <input
+              style={{ marginTop: 6 }}
+              value={customCat}
+              onChange={e => { setCustomCat(e.target.value); set('category', e.target.value); }}
+              placeholder="Nom de la nouvelle catégorie…"
+              autoFocus
+            />
+          )}
         </div>
         <div className="form-group">
           <label>Prix achat (DZD)</label>
@@ -237,6 +272,7 @@ const getStockStatus = (p) => {
 /* ─── Main page ──────────────────────────────────────────────── */
 export default function ProductsPage() {
   const queryClient = useQueryClient();
+  const { confirm, modal: confirmModal } = useConfirm();
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
   const [modal, setModal] = useState(null);
@@ -263,8 +299,9 @@ export default function ProductsPage() {
     onError: (err) => toast.error(err.message || 'Erreur'),
   });
 
-  const handleDelete = (product) => {
-    if (window.confirm(`Archiver "${product.name}" ?`)) deleteMutation.mutate(product.id);
+  const handleDelete = async (product) => {
+    const ok = await confirm({ title: 'Archiver ce produit ?', message: `"${product.name}" sera retiré du catalogue.`, confirmLabel: 'Archiver', variant: 'warning' });
+    if (ok) deleteMutation.mutate(product.id);
   };
 
   const products = data?.data || [];
@@ -288,9 +325,6 @@ export default function ProductsPage() {
             <Printer size={15} /> Imprimer
           </motion.button>
           <QrBatchButton type="product" items={products} label="Produits — QR Badges" filename="qr-produits" />
-          <motion.button className="btn btn--ghost" onClick={() => setModal('import')} whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
-            <Upload size={15} /> Importer
-          </motion.button>
           <motion.button className="btn btn--primary" onClick={() => setModal('create')}
             whileHover={{ scale: 1.04, boxShadow: '0 0 20px rgba(99,102,241,0.4)' }} whileTap={{ scale: 0.96 }}>
             <Plus size={16} /> Ajouter
@@ -300,10 +334,10 @@ export default function ProductsPage() {
 
       {/* ALERTE STOCK */}
       {lowStock.length > 0 && (
-        <motion.div variants={fadeUp} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 'var(--radius)', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <AlertTriangle size={18} color="#ef4444" />
-          <span style={{ color: '#ef4444', fontSize: 13, fontWeight: 500 }}>
-            ⚠️ {lowStock.length} produit(s) en stock faible ou rupture : {lowStock.slice(0, 3).map(p => p.name).join(', ')}{lowStock.length > 3 ? '…' : ''}
+        <motion.div variants={fadeUp} className="alert alert--danger" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <AlertTriangle size={16} style={{ flexShrink: 0 }} />
+          <span>
+            <strong>{lowStock.length} produit(s)</strong> en stock faible ou rupture : {lowStock.slice(0, 3).map(p => p.name).join(', ')}{lowStock.length > 3 ? '…' : ''}
           </span>
         </motion.div>
       )}
@@ -333,15 +367,19 @@ export default function ProductsPage() {
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {categories.map(c => (
-            <motion.button key={c} className={`btn ${category === c ? 'btn--primary' : 'btn--ghost'}`}
-              style={{ padding: '6px 12px', fontSize: 12 }}
+            <motion.div key={c}
+              className={`filter-pill${category === c ? ' active' : ''}`}
+              style={category === c ? { background: 'rgba(99,102,241,0.12)', borderColor: 'rgba(99,102,241,0.35)', color: '#818cf8' } : {}}
               whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.95 }}
-              onClick={() => setCategory(c)}>{c || 'Tous'}</motion.button>
+              onClick={() => setCategory(c)}>{c || 'Tous'}</motion.div>
           ))}
         </div>
       </motion.div>
 
       {/* TABLE */}
+      {isLoading ? (
+        <motion.div variants={fadeUp}><TableSkeleton rows={6} cols={9} /></motion.div>
+      ) : (
       <motion.div variants={fadeUp} style={{ overflowX: 'auto' }}>
         <table className="data-table" style={{ minWidth: 900 }}>
           <thead>
@@ -353,9 +391,7 @@ export default function ProductsPage() {
             </tr>
           </thead>
           <tbody>
-            {isLoading ? (
-              <tr><td colSpan={10} className="table-loading">Chargement…</td></tr>
-            ) : products.length === 0 ? (
+            {products.length === 0 ? (
               <tr><td colSpan={10} className="table-empty">
                 Aucun produit trouvé.{' '}
                 <button className="btn btn--ghost" style={{ display: 'inline', fontSize: 12, padding: '2px 8px' }} onClick={() => setModal('create')}>Ajouter le premier</button>
@@ -385,8 +421,8 @@ export default function ProductsPage() {
                   </td>
                   <td style={{ color: 'var(--text-muted)' }}>{p.minStockQty} {p.unit}</td>
                   <td>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 500, background: status.color + '22', color: status.color }}>
-                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: status.color }} />{status.label}
+                    <span className={`badge badge--${status.color === '#10b981' ? 'green' : status.color === '#f59e0b' ? 'orange' : 'red'} badge--dot`}>
+                      {status.label}
                     </span>
                   </td>
                   <td><QrButton type="product" id={p.id} name={p.name} extraData={{ sku: p.sku, category: p.category }} /></td>
@@ -403,21 +439,20 @@ export default function ProductsPage() {
           </tbody>
         </table>
       </motion.div>
+      )}
 
       {/* MODALS */}
-      {modal === 'import' && (
-        <ImportModal type="products" label="produits" onClose={() => setModal(null)} onSuccess={() => queryClient.invalidateQueries({ queryKey: ['products'] })} />
-      )}
       {modal === 'create' && (
         <Modal title="Nouveau produit" onClose={() => setModal(null)}>
-          <ProductForm onSubmit={(data) => createMutation.mutate(data)} onCancel={() => setModal(null)} isLoading={createMutation.isPending} />
+          <ProductForm onSubmit={(data) => createMutation.mutate(data)} onCancel={() => setModal(null)} isLoading={createMutation.isPending} products={products} />
         </Modal>
       )}
       {modal?.type === 'edit' && (
         <Modal title="Modifier produit" onClose={() => setModal(null)}>
-          <ProductForm initial={modal.product} onSubmit={(data) => updateMutation.mutate({ id: modal.product.id, data })} onCancel={() => setModal(null)} isLoading={updateMutation.isPending} />
+          <ProductForm initial={modal.product} onSubmit={(data) => updateMutation.mutate({ id: modal.product.id, data })} onCancel={() => setModal(null)} isLoading={updateMutation.isPending} products={products} />
         </Modal>
       )}
+      {confirmModal}
     </motion.div>
   );
 }

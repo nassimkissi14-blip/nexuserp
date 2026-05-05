@@ -933,11 +933,14 @@ model Equipment {
   manufacturer    String?
   model           String?
   serialNumber    String?
-  purchaseDate    DateTime?
-  status          String    @default("ACTIVE")
-  lastMaintenance DateTime?
-  nextMaintenance DateTime?
-  notes           String?
+  purchaseDate              DateTime?
+  status                    String    @default("ACTIVE")
+  lastMaintenance           DateTime?
+  nextMaintenance           DateTime?
+  maintenanceFrequency      String?   // DAILY | WEEKLY | BIWEEKLY | MONTHLY | QUARTERLY | BIANNUAL | ANNUAL | CUSTOM
+  maintenanceIntervalDays   Int?      // pour fréquence CUSTOM
+  maintenanceTasks          Json?     // ["Lubrification", "Nettoyage filtres", ...] — checklist par visite
+  notes                     String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -1096,6 +1099,7 @@ model WorkCalendar {
   year        Int
   weekStart   String            @default("08:00")
   weekDuration Float            @default(8)      // heures/jour
+  weekendType  String            @default("SS")   // SS=Sam+Dim, FS=Ven+Sam, F=Ven, S=Sam, D=Dim, NONE
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 

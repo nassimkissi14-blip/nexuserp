@@ -1,36 +1,77 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, Clock, Mail } from 'lucide-react';
 import { useAuthStore } from '../store/index.js';
 
 export default function LoginPage() {
-  const [email, setEmail]     = useState('');
+  const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [showPwd, setShowPwd]   = useState(false);
   const [error, setError]       = useState('');
+  const [pending, setPending]   = useState(false);
   const { login, isLoading }    = useAuthStore();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setPending(false);
     const result = await login(email, password);
-    if (result.success) navigate('/dashboard');
-    else setError(result.error || 'Erreur de connexion');
+    if (result.success) {
+      navigate('/dashboard');
+    } else if (result.error === 'COMPTE_EN_ATTENTE') {
+      setPending(true);
+    } else {
+      setError(result.error || 'Erreur de connexion');
+    }
   };
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)' }}>
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '40px', width: '100%', maxWidth: '420px' }}>
+
         <h1 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '8px', color: 'var(--accent-primary)' }}>NexusERP</h1>
         <p style={{ color: 'var(--text-muted)', marginBottom: '28px' }}>Connectez-vous à votre espace</p>
 
-        {error && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid var(--accent-danger)', borderRadius: 'var(--radius)', padding: '10px 14px', color: 'var(--accent-danger)', marginBottom: '16px', fontSize: '13px' }}>{error}</div>}
+        {/* Pending approval banner */}
+        {pending && (
+          <div style={{
+            background: 'rgba(245,158,11,0.08)',
+            border: '1px solid rgba(245,158,11,0.35)',
+            borderRadius: 12,
+            padding: '18px 20px',
+            marginBottom: 20,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(245,158,11,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Clock size={18} color="#f59e0b" />
+              </div>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#f59e0b' }}>Compte en attente d'approbation</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 1 }}>Votre demande est en cours de traitement</div>
+              </div>
+            </div>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
+              L'équipe RH examinera votre demande et vous recevrez un <strong>email de confirmation</strong> dès qu'elle sera traitée.
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, fontSize: 12, color: 'var(--text-muted)' }}>
+              <Mail size={13} />
+              <span>Notification envoyée à <strong style={{ color: 'var(--text-secondary)' }}>{email}</strong></span>
+            </div>
+          </div>
+        )}
+
+        {/* Generic error */}
+        {error && (
+          <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid var(--accent-danger)', borderRadius: 'var(--radius)', padding: '10px 14px', color: 'var(--accent-danger)', marginBottom: '16px', fontSize: '13px' }}>
+            {error}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit}>
           <div className="form-group" style={{ marginBottom: '16px' }}>
             <label>Email</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="ex: khalid.mekamcha@promedal.dz" />
+            <input type="email" value={email} onChange={e => { setEmail(e.target.value); setPending(false); }} required placeholder="ex: khalid.mekamcha@promedal.dz" />
           </div>
           <div className="form-group" style={{ marginBottom: '24px' }}>
             <label>Mot de passe</label>

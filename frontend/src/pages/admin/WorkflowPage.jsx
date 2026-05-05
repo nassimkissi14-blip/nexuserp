@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { Plus, Play, Pause, Trash2, ChevronRight, Zap, X, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useAuthStore } from '../../store/index.js';
+
+const ADMIN_ROLES = new Set(['SUPER_ADMIN', 'ADMIN', 'DIRECTOR']);
 
 const TRIGGERS = {
   LEAVE_REQUEST:    { label: 'Demande de congé soumise',    icon: '🏖️', module: 'RH' },
@@ -84,6 +87,8 @@ const inp = { background:'#0a0f1e',border:'1px solid #1e293b',borderRadius:8,col
 const lbl = { fontSize:11,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.3px',display:'block',marginBottom:5 };
 
 export default function WorkflowPage() {
+  const { user } = useAuthStore();
+  const canEdit = ADMIN_ROLES.has(user?.role);
   const [workflows, setWorkflows] = useState(initialWorkflows);
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState({ trigger:'LEAVE_REQUEST', condition:'ALWAYS', action:'NOTIFY_SYSTEM', active:true });
@@ -123,10 +128,12 @@ export default function WorkflowPage() {
           <h1 style={{ fontSize:22,fontWeight:700,margin:0 }}>⚡ Workflows Automatisés</h1>
           <p style={{ color:'#475569',fontSize:13,marginTop:4 }}>{activeCount} workflow(s) actif(s) · Automatisation intelligente</p>
         </div>
-        <button onClick={()=>setModal('create')}
-          style={{ display:'flex',alignItems:'center',gap:6,padding:'9px 16px',borderRadius:8,background:'linear-gradient(135deg,#6366f1,#8b5cf6)',border:'none',color:'white',cursor:'pointer',fontWeight:500,fontSize:13 }}>
-          <Plus size={16}/> Nouveau workflow
-        </button>
+        {canEdit && (
+          <button onClick={()=>setModal('create')}
+            style={{ display:'flex',alignItems:'center',gap:6,padding:'9px 16px',borderRadius:8,background:'linear-gradient(135deg,#6366f1,#8b5cf6)',border:'none',color:'white',cursor:'pointer',fontWeight:500,fontSize:13 }}>
+            <Plus size={16}/> Nouveau workflow
+          </button>
+        )}
       </div>
 
       {/* STATS */}
@@ -159,18 +166,22 @@ export default function WorkflowPage() {
             }}>
               <div style={{ display:'flex',alignItems:'flex-start',gap:16 }}>
 
-                {/* Toggle active */}
-                <button onClick={()=>toggleWorkflow(wf.id)} style={{
-                  width:44,height:24,borderRadius:12,border:'none',cursor:'pointer',
-                  background:wf.active?'#6366f1':'#334155',position:'relative',
-                  transition:'background 0.3s',flexShrink:0,marginTop:2,
-                }}>
-                  <span style={{
-                    position:'absolute',top:3,width:18,height:18,borderRadius:'50%',
-                    background:'white',transition:'left 0.3s',
-                    left:wf.active?'calc(100% - 21px)':'3px',
-                  }}/>
-                </button>
+                {/* Toggle active — admin seulement */}
+                {canEdit ? (
+                  <button onClick={()=>toggleWorkflow(wf.id)} style={{
+                    width:44,height:24,borderRadius:12,border:'none',cursor:'pointer',
+                    background:wf.active?'#6366f1':'#334155',position:'relative',
+                    transition:'background 0.3s',flexShrink:0,marginTop:2,
+                  }}>
+                    <span style={{
+                      position:'absolute',top:3,width:18,height:18,borderRadius:'50%',
+                      background:'white',transition:'left 0.3s',
+                      left:wf.active?'calc(100% - 21px)':'3px',
+                    }}/>
+                  </button>
+                ) : (
+                  <span style={{ width:44,height:24,borderRadius:12,display:'inline-block',flexShrink:0,marginTop:2,background:wf.active?'#6366f1':'#334155',opacity:0.7 }}/>
+                )}
 
                 {/* Info */}
                 <div style={{ flex:1,minWidth:0 }}>
@@ -210,17 +221,19 @@ export default function WorkflowPage() {
                   </div>
                 </div>
 
-                {/* Actions */}
-                <div style={{ display:'flex',gap:6,flexShrink:0 }}>
-                  <button onClick={()=>runWorkflow(wf)} title="Exécuter maintenant"
-                    style={{ background:'rgba(99,102,241,0.1)',border:'1px solid rgba(99,102,241,0.2)',borderRadius:8,padding:'7px 10px',color:'#6366f1',cursor:'pointer',display:'flex',alignItems:'center',gap:4,fontSize:12 }}>
-                    <Play size={13}/> Exécuter
-                  </button>
-                  <button onClick={()=>deleteWorkflow(wf.id)}
-                    style={{ background:'none',border:'1px solid #1e293b',borderRadius:8,padding:7,color:'#ef4444',cursor:'pointer',display:'flex',alignItems:'center' }}>
-                    <Trash2 size={13}/>
-                  </button>
-                </div>
+                {/* Actions — admin seulement */}
+                {canEdit && (
+                  <div style={{ display:'flex',gap:6,flexShrink:0 }}>
+                    <button onClick={()=>runWorkflow(wf)} title="Exécuter maintenant"
+                      style={{ background:'rgba(99,102,241,0.1)',border:'1px solid rgba(99,102,241,0.2)',borderRadius:8,padding:'7px 10px',color:'#6366f1',cursor:'pointer',display:'flex',alignItems:'center',gap:4,fontSize:12 }}>
+                      <Play size={13}/> Exécuter
+                    </button>
+                    <button onClick={()=>deleteWorkflow(wf.id)}
+                      style={{ background:'none',border:'1px solid #1e293b',borderRadius:8,padding:7,color:'#ef4444',cursor:'pointer',display:'flex',alignItems:'center' }}>
+                      <Trash2 size={13}/>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           );

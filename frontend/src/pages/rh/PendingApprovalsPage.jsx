@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle, XCircle, Clock, User } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import apiClient from '../../api/client.js';
 
 const api = {
   pending: () => apiClient.get('/users/pending'),
   approve: (id, data) => apiClient.post(`/users/${id}/approve`, data),
-  reject:  (id) => apiClient.post(`/users/${id}/reject`),
+  reject:  (id, data) => apiClient.post(`/users/${id}/reject`, data),
 };
 
 const DEPT_LABELS = {
@@ -20,9 +20,15 @@ const DEPT_LABELS = {
 
 export default function PendingApprovalsPage() {
   const queryClient = useQueryClient();
-  const [approveModal, setApproveModal] = useState(null); // user object
-  const [position, setPosition]   = useState('');
-  const [salary, setSalary]       = useState('');
+
+  // Approve modal state
+  const [approveModal, setApproveModal] = useState(null);
+  const [position, setPosition] = useState('');
+  const [salary, setSalary]     = useState('');
+
+  // Reject modal state
+  const [rejectModal, setRejectModal] = useState(null);
+  const [reason, setReason]           = useState('');
 
   const { data: pending = [], isLoading } = useQuery({
     queryKey: ['users-pending'],
@@ -37,24 +43,21 @@ export default function PendingApprovalsPage() {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       setApproveModal(null);
-      toast.success('✅ Utilisateur approuvé et fiche employé créée');
+      toast.success('✅ Utilisateur approuvé — email de confirmation envoyé');
     },
     onError: (e) => toast.error(e.message || 'Erreur'),
   });
 
   const rejectMut = useMutation({
-    mutationFn: (id) => api.reject(id),
+    mutationFn: ({ id, data }) => api.reject(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users-pending'] });
-      toast.success('🗑️ Demande refusée');
+      setRejectModal(null);
+      setReason('');
+      toast.success('🗑️ Demande refusée — email de notification envoyé');
     },
     onError: (e) => toast.error(e.message || 'Erreur'),
   });
-
-  const handleReject = (u) => {
-    if (!window.confirm(`Refuser la demande de ${u.firstName} ${u.lastName} ?\nLe compte sera supprimé définitivement.`)) return;
-    rejectMut.mutate(u.id);
-  };
 
   return (
     <div className="page">
@@ -77,12 +80,10 @@ export default function PendingApprovalsPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {pending.map(u => (
             <div key={u.id} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 16 }}>
-              {/* Avatar */}
               <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, color: '#fff', fontSize: 16, flexShrink: 0 }}>
                 {u.firstName[0]}{u.lastName[0]}
               </div>
 
-              {/* Info */}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-primary)' }}>{u.firstName} {u.lastName}</div>
                 <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>{u.email}</div>
@@ -97,7 +98,6 @@ export default function PendingApprovalsPage() {
                 </div>
               </div>
 
-              {/* Actions */}
               <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                 <button
                   className="btn btn--primary"
@@ -109,7 +109,7 @@ export default function PendingApprovalsPage() {
                 <button
                   className="btn btn--ghost"
                   style={{ fontSize: 13, color: '#ef4444', gap: 6 }}
-                  onClick={() => handleReject(u)}
+                  onClick={() => { setRejectModal(u); setReason(''); }}
                   disabled={rejectMut.isPending}
                 >
                   <XCircle size={14} /> Refuser
@@ -120,7 +120,7 @@ export default function PendingApprovalsPage() {
         </div>
       )}
 
-      {/* Approve modal */}
+      {/* ── Approve modal ── */}
       {approveModal && (
         <div className="modal-overlay" onClick={() => setApproveModal(null)}>
           <div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
@@ -129,8 +129,8 @@ export default function PendingApprovalsPage() {
               <button className="modal__close" onClick={() => setApproveModal(null)}>✕</button>
             </div>
             <div className="modal__body">
-              <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--bg-secondary)', borderRadius: 8, fontSize: 13, color: 'var(--text-muted)' }}>
-                Un employé sera créé automatiquement dans le module RH pour ce compte.
+              <div style={{ marginBottom: 16, padding: '10px 14px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 8, fontSize: 13, color: '#10b981' }}>
+                ✉️ Un email de confirmation sera envoyé automatiquement à <strong>{approveModal.email}</strong>
               </div>
               <form onSubmit={e => { e.preventDefault(); approveMut.mutate({ id: approveModal.id, data: { position, salary: parseFloat(salary) || 0 } }); }}>
                 <div className="form-group" style={{ marginBottom: 14 }}>
@@ -148,6 +148,48 @@ export default function PendingApprovalsPage() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Reject modal ── */}
+      {rejectModal && (
+        <div className="modal-overlay" onClick={() => setRejectModal(null)}>
+          <div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
+            <div className="modal__header">
+              <h3 style={{ color: '#ef4444' }}>🚫 Refuser {rejectModal.firstName} {rejectModal.lastName}</h3>
+              <button className="modal__close" onClick={() => setRejectModal(null)}>✕</button>
+            </div>
+            <div className="modal__body">
+              <div style={{ display: 'flex', gap: 10, marginBottom: 16, padding: '12px 14px', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8 }}>
+                <AlertTriangle size={16} color="#ef4444" style={{ flexShrink: 0, marginTop: 1 }} />
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  Le compte de <strong>{rejectModal.firstName}</strong> sera <strong>supprimé définitivement</strong>.
+                  Un email de notification sera envoyé à <strong>{rejectModal.email}</strong>.
+                </div>
+              </div>
+              <div className="form-group" style={{ marginBottom: 20 }}>
+                <label>Motif du refus <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optionnel)</span></label>
+                <textarea
+                  value={reason}
+                  onChange={e => setReason(e.target.value)}
+                  placeholder="Ex: Le poste demandé ne correspond pas aux besoins actuels…"
+                  rows={3}
+                  style={{ resize: 'vertical', minHeight: 80 }}
+                />
+              </div>
+              <div className="form-actions">
+                <button className="btn btn--ghost" onClick={() => setRejectModal(null)}>Annuler</button>
+                <button
+                  className="btn"
+                  style={{ background: '#ef4444', color: 'white', border: 'none' }}
+                  onClick={() => rejectMut.mutate({ id: rejectModal.id, data: { reason: reason.trim() || undefined } })}
+                  disabled={rejectMut.isPending}
+                >
+                  {rejectMut.isPending ? 'Suppression…' : '🚫 Confirmer le refus'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

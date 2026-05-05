@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { employeesAPI } from '../../api/client.js';
-import { Search, Plus, Edit2, Trash2, Eye, ChevronLeft, ChevronRight, Download, MoreVertical, Upload } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, Eye, ChevronLeft, ChevronRight, MoreVertical } from 'lucide-react';
 import toast from 'react-hot-toast';
-import ImportModal from '../../components/ImportModal.jsx';
+import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 import { motion, AnimatePresence } from 'framer-motion';
 import { QrButton, QrBatchButton, EmployeeBadgeButton } from '../../components/ui/QrCodeWidget.jsx';
+import { TableSkeleton, CardGridSkeleton } from '../../components/ui/Skeleton.jsx';
 
 const rowVariants = {
   hidden: { opacity: 0, x: -12 },
@@ -23,6 +24,7 @@ const pillVariants = {
 /* ─── Dropdown action menu for table rows ─────────────────────── */
 function ActionMenu({ emp, onView, onEdit, onDelete }) {
   const [open, setOpen] = useState(false);
+  const { confirm, modal: confirmModal } = useConfirm();
   const ref = useRef(null);
 
   useEffect(() => {
@@ -46,7 +48,7 @@ function ActionMenu({ emp, onView, onEdit, onDelete }) {
           {[
             { icon: '👁', label: 'Voir le profil', color: '#94a3b8', action: onView },
             { icon: '✏️', label: 'Modifier',       color: '#6366f1', action: onEdit },
-            { icon: '🗑', label: 'Archiver',        color: '#ef4444', action: () => { if (window.confirm(`Archiver ${emp.firstName} ${emp.lastName} ?`)) { onDelete(); } }, danger: true },
+            { icon: '🗑', label: 'Archiver',        color: '#ef4444', action: async () => { const ok = await confirm({ title: `Archiver ${emp.firstName} ${emp.lastName} ?`, confirmLabel: 'Archiver', variant: 'warning' }); if (ok) onDelete(); }, danger: true },
           ].map((item) => (
             <button key={item.label}
               onClick={(e) => { e.stopPropagation(); setOpen(false); item.action(); }}
@@ -59,10 +61,11 @@ function ActionMenu({ emp, onView, onEdit, onDelete }) {
           ))}
         </div>
       )}
+      {confirmModal}
     </div>
   );
 }
- 
+
 const DEPARTMENTS = ['Direction', 'Ressources Humaines', 'Finance', 'CRM & Ventes', 'Production', 'Logistique', 'IT', 'Maintenance'];
 const CONTRACT_TYPES = ['CDI', 'CDD', 'INTERIM', 'STAGE', 'FREELANCE'];
 const STATUS_LABELS = { ACTIVE: 'Actif', ON_LEAVE: 'En congé', SUSPENDED: 'Suspendu', TERMINATED: 'Archivé' };
@@ -174,23 +177,27 @@ export default function EmployeesPage() {
         </div>
         <motion.div style={{ display: 'flex', gap: 8 }} initial={{ opacity: 0, x: 14 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.28, delay: 0.08 }}>
           <QrBatchButton type="employee" items={employees} label="Employés — Badges QR" filename="qr-employes" />
-          <button className="btn btn--ghost" onClick={() => toast('Export Excel bientôt disponible')}><Download size={15} /> Export</button>
-          <button className="btn btn--ghost" onClick={() => setModal('import')}><Upload size={15} /> Importer</button>
           <button className="btn btn--primary" onClick={() => setModal('create')}><Plus size={16} /> Ajouter</button>
         </motion.div>
       </motion.div>
  
       {/* STATS DÉPARTEMENTS */}
       <motion.div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }} initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.045 } } }}>
+        <motion.div
+          custom={0} variants={pillVariants} whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }}
+          className={`filter-pill${!filterDept ? ' active' : ''}`}
+          style={!filterDept ? { background: 'rgba(99,102,241,0.12)', borderColor: 'rgba(99,102,241,0.35)', color: '#818cf8' } : {}}
+          onClick={() => setFilterDept('')}
+        >
+          Tous <strong style={{ marginLeft: 3, opacity: 0.8 }}>({employees.length})</strong>
+        </motion.div>
         {Object.entries(deptStats).filter(([, count]) => count > 0).map(([dept, count], i) => (
-          <motion.div key={dept} custom={i} variants={pillVariants} whileHover={{ y: -2, scale: 1.04 }} whileTap={{ scale: 0.96 }} style={{
-            background: filterDept === dept ? 'rgba(99,102,241,0.1)' : 'var(--bg-card)',
-            border: `1px solid ${filterDept === dept ? 'rgba(99,102,241,0.4)' : 'var(--border)'}`,
-            borderRadius: 20, padding: '5px 13px', fontSize: 12,
-            color: filterDept === dept ? '#818cf8' : 'var(--text-secondary)',
-            cursor: 'pointer', fontWeight: filterDept === dept ? 700 : 400,
-          }} onClick={() => setFilterDept(filterDept === dept ? '' : dept)}>
-            {dept} <strong>({count})</strong>
+          <motion.div key={dept} custom={i + 1} variants={pillVariants} whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }}
+            className={`filter-pill${filterDept === dept ? ' active' : ''}`}
+            style={filterDept === dept ? { background: 'rgba(99,102,241,0.12)', borderColor: 'rgba(99,102,241,0.35)', color: '#818cf8' } : {}}
+            onClick={() => setFilterDept(filterDept === dept ? '' : dept)}
+          >
+            {dept} <strong style={{ marginLeft: 3, opacity: 0.8 }}>({count})</strong>
           </motion.div>
         ))}
       </motion.div>
@@ -235,7 +242,17 @@ export default function EmployeesPage() {
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={10} style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>Chargement…</td></tr>
+                <tr><td colSpan={10} style={{ padding: 0 }}>
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 14, padding: '12px 14px', borderBottom: '1px solid var(--border)', alignItems: 'center' }}>
+                      <div className="skeleton" style={{ width: 36, height: 36, borderRadius: '50%', flexShrink: 0 }} />
+                      <div style={{ flex: 1 }}><div className="skeleton" style={{ height: 13, width: '40%', marginBottom: 6, borderRadius: 6 }} /><div className="skeleton" style={{ height: 11, width: '55%', borderRadius: 6 }} /></div>
+                      <div className="skeleton" style={{ height: 11, width: 80, borderRadius: 6 }} />
+                      <div className="skeleton" style={{ height: 11, width: 70, borderRadius: 6 }} />
+                      <div className="skeleton" style={{ height: 22, width: 60, borderRadius: 20 }} />
+                    </div>
+                  ))}
+                </td></tr>
               ) : employees.length === 0 ? (
                 <tr><td colSpan={10} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>Aucun employé trouvé</td></tr>
               ) : employees.map((emp, i) => (
@@ -293,7 +310,7 @@ export default function EmployeesPage() {
       {/* VUE CARDS */}
       {viewMode === 'cards' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
-          {isLoading ? <p style={{ color: 'var(--text-muted)' }}>Chargement…</p> :
+          {isLoading ? <CardGridSkeleton count={6} minWidth={260} /> :
             employees.map((emp, i) => (
               <motion.div key={emp.id} custom={i} variants={cardVariants} initial="hidden" animate="show"
                 whileHover={{ y: -4, boxShadow: '0 12px 40px rgba(0,0,0,0.4)', borderColor: 'rgba(99,102,241,0.3)' }}
@@ -350,9 +367,6 @@ export default function EmployeesPage() {
       )}
  
       {/* MODALS */}
-      {modal === 'import' && (
-        <ImportModal type="employees" label="employés" onClose={() => setModal(null)} onSuccess={() => queryClient.invalidateQueries({ queryKey: ['employees'] })} />
-      )}
       {modal === 'create' && (
         <Modal title="➕ Ajouter un employé" onClose={() => setModal(null)}>
           <EmployeeForm onSubmit={(data) => createMutation.mutate(data)} onCancel={() => setModal(null)} isLoading={createMutation.isPending} />

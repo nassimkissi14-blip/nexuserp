@@ -30,12 +30,17 @@ router.get('/equipment', authenticate, async (req, res, next) => {
 
 router.post('/equipment', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'DIRECTOR', 'MANAGER'), async (req, res, next) => {
   try {
-    const { purchaseDate, ...rest } = req.body;
+    const { purchaseDate, nextMaintenance, lastMaintenance, maintenanceIntervalDays, maintenanceTasks, ...rest } = req.body;
+    Object.keys(rest).forEach(k => { if (rest[k] === '') delete rest[k]; });
     const equipment = await prisma.equipment.create({
       data: {
         ...rest,
         companyId: req.companyId,
-        ...(purchaseDate && { purchaseDate: new Date(purchaseDate) }),
+        ...(purchaseDate                                                       && { purchaseDate:            new Date(purchaseDate) }),
+        ...(nextMaintenance                                                    && { nextMaintenance:         new Date(nextMaintenance) }),
+        ...(lastMaintenance                                                    && { lastMaintenance:         new Date(lastMaintenance) }),
+        ...(maintenanceIntervalDays != null && maintenanceIntervalDays !== '' && { maintenanceIntervalDays: parseInt(maintenanceIntervalDays, 10) }),
+        ...(Array.isArray(maintenanceTasks)                                   && { maintenanceTasks }),
       },
     });
     res.status(201).json({ success: true, data: equipment });
@@ -60,14 +65,17 @@ router.get('/equipment/:id', authenticate, async (req, res, next) => {
 
 router.patch('/equipment/:id', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'DIRECTOR', 'MANAGER'), async (req, res, next) => {
   try {
-    const { purchaseDate, lastMaintenance, nextMaintenance, ...rest } = req.body;
+    const { purchaseDate, lastMaintenance, nextMaintenance, maintenanceIntervalDays, maintenanceTasks, ...rest } = req.body;
+    Object.keys(rest).forEach(k => { if (rest[k] === '') delete rest[k]; });
     const equipment = await prisma.equipment.update({
       where: { id: req.params.id },
       data: {
         ...rest,
-        ...(purchaseDate      && { purchaseDate:      new Date(purchaseDate) }),
-        ...(lastMaintenance   && { lastMaintenance:   new Date(lastMaintenance) }),
-        ...(nextMaintenance   && { nextMaintenance:   new Date(nextMaintenance) }),
+        ...(purchaseDate                                                       && { purchaseDate:            new Date(purchaseDate) }),
+        ...(lastMaintenance                                                    && { lastMaintenance:         new Date(lastMaintenance) }),
+        ...(nextMaintenance                                                    && { nextMaintenance:         new Date(nextMaintenance) }),
+        ...(maintenanceIntervalDays != null && maintenanceIntervalDays !== '' && { maintenanceIntervalDays: parseInt(maintenanceIntervalDays, 10) }),
+        ...(Array.isArray(maintenanceTasks)                                   && { maintenanceTasks }),
       },
     });
 
@@ -136,8 +144,13 @@ router.post('/requests', authenticate, async (req, res, next) => {
     const count = await prisma.maintenanceRequest.count({ where: { companyId: req.companyId } });
     const number = genNumber('MR', count);
 
+    const { equipmentId, ...bodyRest } = req.body;
+    if (!equipmentId) return res.status(400).json({ success: false, message: 'Équipement requis' });
+    // Strip empty strings
+    Object.keys(bodyRest).forEach(k => { if (bodyRest[k] === '') delete bodyRest[k]; });
+
     const request = await prisma.maintenanceRequest.create({
-      data: { ...req.body, companyId: req.companyId, number },
+      data: { ...bodyRest, equipmentId, companyId: req.companyId, number },
       include: { equipment: true },
     });
 
@@ -224,18 +237,26 @@ router.post('/orders', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'DIRECTOR
   try {
     const count = await prisma.maintenanceOrder.count({ where: { companyId: req.companyId } });
     const number = genNumber('WO', count);
-    const { plannedDate, requestId, ...rest } = req.body;
+    const { plannedDate, requestId, estimatedHours, actualHours, laborCost, partsCost, equipmentId, ...rest } = req.body;
 
-    if (!rest.equipmentId) return res.status(400).json({ success: false, message: 'Équipement requis' });
-    if (!rest.title)       return res.status(400).json({ success: false, message: 'Titre requis' });
+    if (!equipmentId) return res.status(400).json({ success: false, message: 'Équipement requis' });
+    if (!rest.title)  return res.status(400).json({ success: false, message: 'Titre requis' });
+
+    // Strip empty strings from optional text fields
+    Object.keys(rest).forEach(k => { if (rest[k] === '') delete rest[k]; });
 
     const order = await prisma.maintenanceOrder.create({
       data: {
         ...rest,
+        equipmentId,
         companyId: req.companyId,
         number,
-        ...(requestId  && { requestId }),
-        ...(plannedDate && { plannedDate: new Date(plannedDate) }),
+        ...(requestId                                  && { requestId }),
+        ...(plannedDate                                && { plannedDate:      new Date(plannedDate) }),
+        ...(estimatedHours !== '' && estimatedHours != null && { estimatedHours: parseFloat(estimatedHours) }),
+        ...(actualHours    !== '' && actualHours    != null && { actualHours:    parseFloat(actualHours)    }),
+        ...(laborCost      !== '' && laborCost      != null && { laborCost:      parseFloat(laborCost)      }),
+        ...(partsCost      !== '' && partsCost      != null && { partsCost:      parseFloat(partsCost)      }),
       },
       include: { equipment: true },
     });
@@ -256,10 +277,20 @@ router.post('/orders', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'DIRECTOR
 
 router.patch('/orders/:id', authenticate, async (req, res, next) => {
   try {
+    const { estimatedHours, actualHours, laborCost, partsCost, plannedDate, requestId, ...rest } = req.body;
+    // Strip empty strings
+    Object.keys(rest).forEach(k => { if (rest[k] === '') delete rest[k]; });
+
     const order = await prisma.maintenanceOrder.update({
       where: { id: req.params.id },
-      data:  {
-        ...req.body,
+      data: {
+        ...rest,
+        ...(requestId                                  && { requestId }),
+        ...(plannedDate                                && { plannedDate:      new Date(plannedDate) }),
+        ...(estimatedHours !== '' && estimatedHours != null && { estimatedHours: parseFloat(estimatedHours) }),
+        ...(actualHours    !== '' && actualHours    != null && { actualHours:    parseFloat(actualHours)    }),
+        ...(laborCost      !== '' && laborCost      != null && { laborCost:      parseFloat(laborCost)      }),
+        ...(partsCost      !== '' && partsCost      != null && { partsCost:      parseFloat(partsCost)      }),
         ...(req.body.status === 'IN_PROGRESS' && { startedAt:   new Date() }),
         ...(req.body.status === 'COMPLETED'   && { completedAt: new Date() }),
       },

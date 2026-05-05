@@ -51,6 +51,12 @@ const PRIORITY = {
   CRITICAL: { label: 'Critique', color: '#ef4444' },
 };
 
+const OP_STATUS = {
+  PENDING:     { label: 'En attente', color: '#64748b' },
+  IN_PROGRESS: { label: 'En cours',   color: '#f59e0b' },
+  COMPLETED:   { label: 'Terminé',    color: '#10b981' },
+};
+
 const fmt    = n => Number(n || 0).toLocaleString('fr-DZ');
 const fmtDate = d => d ? new Date(d).toLocaleDateString('fr-FR') : '—';
 
@@ -99,6 +105,7 @@ function OrderModal({ order, products, workcenters, boms, onClose, onSave }) {
     bomId: order?.bomId || '',
     quantity: order?.quantity || '',
     priority: order?.priority || 'MEDIUM',
+    status: order?.status || 'DRAFT',
     plannedStart: order?.plannedStart?.slice(0, 10) || '',
     plannedEnd: order?.plannedEnd?.slice(0, 10) || '',
     operations: order?.operations || [],
@@ -213,6 +220,8 @@ function BomModal({ bom, products, onClose, onSave }) {
     isActive: bom?.isActive ?? true,
     items: bom?.items?.map(i => ({ productId: i.productId, quantity: i.quantity, unit: i.unit })) || [],
   });
+  const finishedProds  = prods.filter(p => p.articleType === 'FABRIQUE' || !p.articleType);
+  const componentProds = prods.filter(p => p.id !== form.productId);
 
   const addItem = () => setForm(f => ({ ...f, items: [...f.items, { productId: '', quantity: 1, unit: 'pcs' }] }));
   const removeItem = i => setForm(f => ({ ...f, items: f.items.filter((_, idx) => idx !== i) }));
@@ -228,8 +237,8 @@ function BomModal({ bom, products, onClose, onSave }) {
         <label>
           <span className="form__label">Produit fini *</span>
           <select className="form__input" value={form.productId} onChange={e => setForm(f => ({ ...f, productId: e.target.value }))}>
-            <option value="">Sélectionner…</option>
-            {prods.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            <option value="">Sélectionner un produit fabriqué…</option>
+            {finishedProds.map(p => <option key={p.id} value={p.id}>{p.name}{p.sku ? ` — ${p.sku}` : ''}</option>)}
           </select>
         </label>
         <label>
@@ -247,7 +256,11 @@ function BomModal({ bom, products, onClose, onSave }) {
             <span className="form__label" style={{ fontSize: 10 }}>Composant</span>
             <select className="form__input" value={item.productId} onChange={e => setItem(i, 'productId', e.target.value)}>
               <option value="">—</option>
-              {prods.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {componentProds.map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.articleType === 'ACHETE' ? '🛒' : '⚙️'} {p.name}{p.sku ? ` (${p.sku})` : ''}
+                </option>
+              ))}
             </select>
           </label>
           <label>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Settings, Edit2, Trash2, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -25,27 +25,76 @@ const EQUIP_STATUS = {
   RETIRED:     { label: 'Retraité',     color: '#64748b' },
 };
 
+const FREQ_OPTIONS = [
+  { value: '',          label: '— Non définie —' },
+  { value: 'DAILY',     label: 'Quotidienne',              days: 1   },
+  { value: 'WEEKLY',    label: 'Hebdomadaire (1×/semaine)', days: 7   },
+  { value: 'BIWEEKLY',  label: 'Bihebdomadaire (2×/semaine)', days: 3.5 },
+  { value: 'MONTHLY',   label: 'Mensuelle (1×/mois)',      days: 30  },
+  { value: 'QUARTERLY', label: 'Trimestrielle (1×/trimestre)', days: 90  },
+  { value: 'BIANNUAL',  label: 'Semestrielle (2×/an)',     days: 182 },
+  { value: 'ANNUAL',    label: 'Annuelle (1×/an)',         days: 365 },
+  { value: 'CUSTOM',    label: 'Personnalisée (intervalle en jours)', days: null },
+];
+
+const FREQ_LABEL = Object.fromEntries(FREQ_OPTIONS.filter(o => o.value).map(o => [o.value, o.label]));
+
+function freqSummary(equip) {
+  if (!equip.maintenanceFrequency) return null;
+  const opt = FREQ_OPTIONS.find(o => o.value === equip.maintenanceFrequency);
+  let txt = opt?.label || equip.maintenanceFrequency;
+  if (equip.maintenanceFrequency === 'CUSTOM' && equip.maintenanceIntervalDays)
+    txt = `Tous les ${equip.maintenanceIntervalDays} jours`;
+  const taskCount = Array.isArray(equip.maintenanceTasks) ? equip.maintenanceTasks.length : 0;
+  if (taskCount > 0) txt += ` · ${taskCount} tâche${taskCount > 1 ? 's' : ''}`;
+  return txt;
+}
+
 const fmtDate   = d => d ? new Date(d).toLocaleDateString('fr-FR') : '—';
 const daysUntil = d => d ? Math.ceil((new Date(d) - new Date()) / 86400000) : null;
 
 /* ── EQUIPMENT FORM ─────────────────────────── */
 function EquipmentModal({ equip, onClose, onSave, loading }) {
   const [form, setForm] = useState({
-    code:            equip?.code            || '',
-    name:            equip?.name            || '',
-    type:            equip?.type            || '',
-    location:        equip?.location        || '',
-    manufacturer:    equip?.manufacturer    || '',
-    model:           equip?.model           || '',
-    serialNumber:    equip?.serialNumber    || '',
-    purchaseDate:    equip?.purchaseDate?.slice(0, 10)    || '',
-    nextMaintenance: equip?.nextMaintenance?.slice(0, 10) || '',
-    status:          equip?.status          || 'ACTIVE',
+    code:                    equip?.code                     || '',
+    name:                    equip?.name                     || '',
+    type:                    equip?.type                     || '',
+    location:                equip?.location                 || '',
+    manufacturer:            equip?.manufacturer             || '',
+    model:                   equip?.model                    || '',
+    serialNumber:            equip?.serialNumber             || '',
+    purchaseDate:            equip?.purchaseDate?.slice(0, 10)    || '',
+    nextMaintenance:         equip?.nextMaintenance?.slice(0, 10) || '',
+    status:                  equip?.status                   || 'ACTIVE',
+    maintenanceFrequency:    equip?.maintenanceFrequency     || '',
+    maintenanceIntervalDays: equip?.maintenanceIntervalDays  != null ? String(equip.maintenanceIntervalDays) : '',
+    maintenanceTasks:        Array.isArray(equip?.maintenanceTasks) ? equip.maintenanceTasks : [],
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const [newTask, setNewTask] = useState('');
+  const taskInputRef = useRef(null);
+
+  const addTask = () => {
+    const t = newTask.trim();
+    if (!t) return;
+    set('maintenanceTasks', [...form.maintenanceTasks, t]);
+    setNewTask('');
+    taskInputRef.current?.focus();
+  };
+  const removeTask = (i) => set('maintenanceTasks', form.maintenanceTasks.filter((_, idx) => idx !== i));
+
+  // When frequency changes, reset nextMaintenance to today so cron fires immediately
+  const handleFreqChange = (freq) => {
+    set('maintenanceFrequency', freq);
+    if (freq) {
+      set('nextMaintenance', new Date().toISOString().slice(0, 10));
+    }
+  };
 
   return (
-    <Modal title={equip ? `Modifier — ${equip.name}` : 'Nouvel équipement'} onClose={onClose} width={640}>
+    <Modal title={equip ? `Modifier — ${equip.name}` : 'Nouvel équipement'} onClose={onClose} width={680}>
+      {/* ── Identification ── */}
+      <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-muted)', marginBottom: 10, marginTop: 4 }}>Identification</div>
       <FormGrid cols={2}>
         <Field label="Code machine">
           <Input value={form.code} onChange={e => set('code', e.target.value)} placeholder="EQ-001" />
@@ -71,15 +120,78 @@ function EquipmentModal({ equip, onClose, onSave, loading }) {
         <Field label="Date d'achat">
           <Input type="date" value={form.purchaseDate} onChange={e => set('purchaseDate', e.target.value)} />
         </Field>
-        <Field label="Prochaine maintenance préventive">
-          <Input type="date" value={form.nextMaintenance} onChange={e => set('nextMaintenance', e.target.value)} />
-        </Field>
-        <Field label="Statut opérationnel">
+        <Field label="Statut opérationnel" style={{ gridColumn: 'span 2' }}>
           <Select value={form.status} onChange={e => set('status', e.target.value)}>
             {Object.entries(EQUIP_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
           </Select>
         </Field>
       </FormGrid>
+
+      {/* ── Plan de maintenance préventive ── */}
+      <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-muted)', margin: '20px 0 10px' }}>
+        🔄 Plan de maintenance préventive
+      </div>
+      <FormGrid cols={2}>
+        <Field label="Fréquence de maintenance" style={{ gridColumn: 'span 2' }}>
+          <Select value={form.maintenanceFrequency} onChange={e => handleFreqChange(e.target.value)}>
+            {FREQ_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </Select>
+        </Field>
+
+        {form.maintenanceFrequency === 'CUSTOM' && (
+          <Field label="Intervalle entre maintenances (jours) *">
+            <Input
+              type="number" min="1" value={form.maintenanceIntervalDays}
+              onChange={e => set('maintenanceIntervalDays', e.target.value)}
+              placeholder="ex: 45"
+            />
+          </Field>
+        )}
+
+        <Field label="Prochaine maintenance préventive" style={{ gridColumn: 'span 2' }}>
+          <Input type="date" value={form.nextMaintenance} onChange={e => set('nextMaintenance', e.target.value)} />
+        </Field>
+      </FormGrid>
+
+      {/* ── Tâches à effectuer (checklist) ── */}
+      {form.maintenanceFrequency && (
+        <>
+          <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-muted)', margin: '20px 0 10px' }}>
+            ✅ Tâches à effectuer à chaque visite
+          </div>
+
+          {/* Liste existante */}
+          {form.maintenanceTasks.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+              {form.maintenanceTasks.map((task, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px' }}>
+                  <span style={{ width: 20, height: 20, borderRadius: 4, border: '2px solid var(--border)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>{i + 1}</span>
+                  <span style={{ flex: 1, fontSize: 13, color: 'var(--text-primary)' }}>{task}</span>
+                  <button onClick={() => removeTask(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: 16, padding: '0 4px', lineHeight: 1 }}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Ajouter une tâche */}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              ref={taskInputRef}
+              value={newTask}
+              onChange={e => setNewTask(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addTask())}
+              placeholder="ex: Lubrification des axes, Vérification tension courroie…"
+              style={{ flex: 1, background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', fontSize: 13, color: 'var(--text-primary)', outline: 'none', fontFamily: 'inherit' }}
+            />
+            <button onClick={addTask} disabled={!newTask.trim()}
+              style={{ background: '#6366f1', border: 'none', borderRadius: 8, padding: '8px 16px', color: 'white', fontSize: 13, fontWeight: 700, cursor: newTask.trim() ? 'pointer' : 'not-allowed', opacity: newTask.trim() ? 1 : 0.5, fontFamily: 'inherit' }}>
+              + Ajouter
+            </button>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 5 }}>Appuie sur Entrée ou clique + Ajouter. Ces tâches seront incluses dans chaque demande automatique.</div>
+        </>
+      )}
+
       <FormActions>
         <Btn variant="secondary" onClick={onClose}>Annuler</Btn>
         <Btn variant="primary" loading={loading} onClick={() => onSave(form)}>
@@ -152,8 +264,28 @@ function MachineCard({ equip, onEdit, onDelete }) {
       </div>
 
       {equip.manufacturer && (
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 12 }}>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
           {equip.manufacturer}{equip.model ? ` · ${equip.model}` : ''}
+        </div>
+      )}
+
+      {/* Fréquence de maintenance */}
+      {equip.maintenanceFrequency && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 8, padding: '6px 10px', marginBottom: 6 }}>
+            <span style={{ fontSize: 13 }}>🔄</span>
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: '#818cf8', flex: 1 }}>{freqSummary(equip)}</span>
+          </div>
+          {Array.isArray(equip.maintenanceTasks) && equip.maintenanceTasks.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {equip.maintenanceTasks.map((t, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--text-secondary)' }}>
+                  <span style={{ width: 15, height: 15, borderRadius: 3, border: '1.5px solid var(--border)', flexShrink: 0 }} />
+                  {t}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

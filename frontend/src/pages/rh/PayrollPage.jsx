@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { payrollAPI } from '../../api/client.js';
 import { Download, Check, Edit2, Trash2 } from 'lucide-react';
+import { TableSkeleton, StatCardGridSkeleton } from '../../components/ui/Skeleton.jsx';
 import toast from 'react-hot-toast';
+import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 import { useAuthStore } from '../../store/index.js';
 
 /* ─── Payslip PDF generator ──────────────────────────────────── */
@@ -11,7 +13,8 @@ function printPayslip(entry, company = {}) {
     name:    company.name    || 'NexusERP',
     address: company.address || '',
     email:   company.email   || '',
-    logo:    'NexusERP',
+    phone:   company.phone   || '',
+    logo:    company.name    || 'NexusERP',
   };
 
   const fmt  = (n) => new Intl.NumberFormat('fr-DZ').format(Number(n) || 0) + ' DZD';
@@ -20,10 +23,14 @@ function printPayslip(entry, company = {}) {
   const monthLabel = `${monthNames[(entry.month || 1) - 1]} ${entry.year}`;
   const paidDate   = entry.paidAt ? new Date(entry.paidAt).toLocaleDateString('fr-FR') : '—';
 
-  const cotisationBase  = Number(entry.baseSalary || 0) * 0.09;   // 9% CNAS salarié
-  const irg             = Math.max(0, (Number(entry.netSalary || 0) - 10000) * 0.1); // IRG simplifié
-  const brut            = Number(entry.baseSalary || 0) + Number(entry.bonus || 0);
-  const net             = Number(entry.netSalary || 0);
+  const base       = Number(entry.baseSalary || 0);
+  const bonus      = Number(entry.bonus || 0);
+  const deductions = Number(entry.deductions || 0);
+  const brut       = base + bonus;
+  const net        = Number(entry.netSalary || 0);
+  // Breakdown from stored deductions only — don't invent deductions not in DB
+  const cnas = deductions > 0 ? Math.round(base * 0.09) : 0;
+  const irg  = deductions > 0 ? Math.max(0, deductions - cnas) : 0;
 
   const html = `<!DOCTYPE html>
 <html lang="fr">
@@ -118,9 +125,7 @@ function printPayslip(entry, company = {}) {
       <div class="party-label">Employeur</div>
       <div class="party-name">${COMPANY.name}</div>
       <div class="party-detail">
-        ${COMPANY.address}<br/>
-        ${COMPANY.city}<br/>
-        ${COMPANY.email}
+        ${COMPANY.address ? COMPANY.address + '<br/>' : ''}${COMPANY.email ? COMPANY.email + '<br/>' : ''}${COMPANY.phone || ''}
       </div>
     </div>
     <div class="party">
@@ -142,15 +147,15 @@ function printPayslip(entry, company = {}) {
     <tbody>
       <tr>
         <td>Salaire de base</td>
-        <td>${fmt(entry.baseSalary)}</td>
+        <td>${fmt(base)}</td>
         <td>—</td>
-        <td class="row-positive">${fmt(entry.baseSalary)}</td>
+        <td class="row-positive">${fmt(base)}</td>
       </tr>
-      ${entry.bonus > 0 ? `<tr>
+      ${bonus > 0 ? `<tr>
         <td>Primes et indemnités</td>
         <td>—</td>
         <td>—</td>
-        <td class="row-positive">${fmt(entry.bonus)}</td>
+        <td class="row-positive">${fmt(bonus)}</td>
       </tr>` : ''}
       <tr style="background:#f8fafc;font-weight:700">
         <td><strong>Total brut</strong></td>
@@ -168,21 +173,15 @@ function printPayslip(entry, company = {}) {
     <tbody>
       <tr>
         <td>Cotisation CNAS (salarié)</td>
-        <td>${fmt(entry.baseSalary)}</td>
+        <td>${fmt(base)}</td>
         <td>9 %</td>
-        <td class="row-negative">- ${fmt(cotisationBase)}</td>
+        <td class="row-negative">- ${fmt(cnas)}</td>
       </tr>
-      <tr>
+      ${irg > 0 ? `<tr>
         <td>IRG (impôt sur salaire)</td>
-        <td>${fmt(net)}</td>
+        <td>${fmt(brut - cnas)}</td>
         <td>≈ 10 %</td>
         <td class="row-negative">- ${fmt(irg)}</td>
-      </tr>
-      ${entry.deductions > 0 ? `<tr>
-        <td>Autres déductions</td>
-        <td>—</td>
-        <td>—</td>
-        <td class="row-negative">- ${fmt(entry.deductions)}</td>
       </tr>` : ''}
     </tbody>
   </table>
@@ -190,7 +189,7 @@ function printPayslip(entry, company = {}) {
   <!-- Totals -->
   <div class="totals-box">
     <div class="totals-row"><span>Salaire brut</span><span>${fmt(brut)}</span></div>
-    <div class="totals-row"><span>Total retenues</span><span>- ${fmt(cotisationBase + irg + Number(entry.deductions || 0))}</span></div>
+    <div class="totals-row"><span>Total retenues</span><span>- ${fmt(deductions)}</span></div>
     <div class="totals-row total"><span>Net à payer</span><span>${fmt(net)}</span></div>
   </div>
 
@@ -254,6 +253,7 @@ const EditableCell = ({ value, onSave, disabled }) => {
 
 export default function PayrollPage() {
   const queryClient = useQueryClient();
+  const { confirm, modal: confirmModal } = useConfirm();
   const { user } = useAuthStore();
   const now = new Date();
   const [month, setMonth] = useState(String(now.getMonth() + 1).padStart(2, '0'));
@@ -320,15 +320,16 @@ export default function PayrollPage() {
           { label: 'Total primes', value: fmt(totalBonus), color: '#10b981', icon: '🎁' },
           { label: 'Salaires versés', value: `${paidCount} / ${entries.length}`, color: paidCount === entries.length && entries.length > 0 ? '#10b981' : '#f59e0b', icon: '✅' },
         ].map((s, i) => (
-          <div key={i} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 20 }}>
-            <div style={{ fontSize: 28, marginBottom: 8 }}>{s.icon}</div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: s.color, marginBottom: 4 }}>{s.value}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{s.label}</div>
+          <div key={i} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderTop: `3px solid ${s.color}`, borderRadius: 'var(--radius-lg)', padding: 20 }}>
+            <div style={{ fontSize: 26, marginBottom: 10 }}>{s.icon}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: s.color, marginBottom: 4, letterSpacing: -0.5 }}>{s.value}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 500 }}>{s.label}</div>
           </div>
         ))}
       </div>
 
       {/* TABLE */}
+      {isLoading ? <TableSkeleton rows={6} cols={8} /> : (
       <div className="table-card" style={{ overflowX: 'auto' }}>
         <table className="data-table" style={{ minWidth: 900 }}>
           <thead>
@@ -338,9 +339,7 @@ export default function PayrollPage() {
             </tr>
           </thead>
           <tbody>
-            {isLoading ? (
-              <tr><td colSpan={8} className="table-loading">Chargement…</td></tr>
-            ) : entries.length === 0 ? (
+            {entries.length === 0 ? (
               <tr><td colSpan={8} className="table-empty">
                 Aucune fiche de paie pour cette période.{' '}
                 <button className="btn btn--ghost" style={{ fontSize: 12, padding: '2px 8px', display: 'inline' }}
@@ -371,20 +370,16 @@ export default function PayrollPage() {
                 <td style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: 15 }}>{fmt(entry.netSalary)}</td>
                 <td>
                   {entry.paidAt ? (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 500, background: '#10b98122', color: '#10b981' }}>
-                      <Check size={11} /> Versé
-                    </span>
+                    <span className="badge badge--green badge--dot">Versé</span>
                   ) : (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 500, background: '#f59e0b22', color: '#f59e0b' }}>
-                      En attente
-                    </span>
+                    <span className="badge badge--orange badge--dot">En attente</span>
                   )}
                 </td>
                 <td>
                   <div className="table-actions">
                     {!entry.paidAt && (
                       <button className="btn btn--primary" style={{ padding: '5px 12px', fontSize: 12 }}
-                        onClick={() => { if (window.confirm(`Marquer le salaire de ${entry.employee?.firstName} ${entry.employee?.lastName} comme versé ?`)) payMutation.mutate(entry.id); }}>
+                        onClick={async () => { const ok = await confirm({ title: 'Confirmer le versement ?', message: `Marquer le salaire de ${entry.employee?.firstName} ${entry.employee?.lastName} comme versé ?`, confirmLabel: 'Verser', variant: 'info' }); if (ok) payMutation.mutate(entry.id); }}>
                         Verser
                       </button>
                     )}
@@ -399,6 +394,8 @@ export default function PayrollPage() {
           </tbody>
         </table>
       </div>
+      )}
+      {confirmModal}
     </div>
   );
 }

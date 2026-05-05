@@ -1,8 +1,41 @@
-import { Navigate } from 'react-router-dom';
-import { useAuthStore } from '../store/index.js';
-import { useModulesConfigStore } from '../store/modulesConfig.js';
+import { useSearchParams } from 'react-router-dom';
+import { useAuthStore, useModulesStore } from '../store/index.js';
 import toast from 'react-hot-toast';
-import { ChevronUp, ChevronDown, RotateCcw, GripVertical } from 'lucide-react';
+import { ChevronUp, ChevronDown, Settings } from 'lucide-react';
+
+const ROLE_ORDER = { OPERATOR: 0, MANAGER: 1, DIRECTOR: 2, ADMIN: 3, SUPER_ADMIN: 4 };
+const isAtLeast = (role, min) => (ROLE_ORDER[role] ?? 0) >= (ROLE_ORDER[min] ?? 0);
+
+// Department → primary module slugs the manager can configure
+const DEPT_TO_SLUGS = {
+  'ressources humaines':    ['rh'],
+  'rh':                     ['rh'],
+  'human resources':        ['rh'],
+  'crm':                    ['crm', 'sales'],
+  'ventes':                 ['sales', 'crm'],
+  'commercial':             ['crm', 'sales'],
+  'crm & ventes':           ['crm', 'sales'],
+  'crm & commercial':       ['crm', 'sales'],
+  'commercial / crm':       ['crm', 'sales'],
+  'achats':                 ['purchases'],
+  'stock':                  ['stock'],
+  'logistique':             ['logistics', 'stock'],
+  'stock / logistique':     ['stock', 'logistics'],
+  'finance':                ['finance'],
+  'finance / comptabilite': ['finance'],
+  'comptabilite':           ['finance'],
+  'comptabilité':           ['finance'],
+  'projets':                ['projects'],
+  'projects':               ['projects'],
+  'production':             ['production'],
+  'maintenance':            ['maintenance'],
+  'communication':          ['communication'],
+  'it':                     ['ai', 'analytics'],
+  'informatique':           ['ai', 'analytics'],
+};
+
+const normDept = (d) =>
+  (d || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
 
 const MODULE_DESCRIPTIONS = {
   rh:            'Employés, congés, paie, recrutement',
@@ -20,7 +53,6 @@ const MODULE_DESCRIPTIONS = {
   analytics:     'Tableaux de bord BI, rapports',
 };
 
-/* ── Toggle switch ─────────────────────────────────────────────── */
 function Toggle({ checked, onChange, size = 'md' }) {
   const w = size === 'sm' ? 32 : 42;
   const h = size === 'sm' ? 18 : 24;
@@ -48,7 +80,6 @@ function Toggle({ checked, onChange, size = 'md' }) {
   );
 }
 
-/* ── Order button ──────────────────────────────────────────────── */
 function OrderBtn({ onClick, disabled, children }) {
   return (
     <button
@@ -62,7 +93,7 @@ function OrderBtn({ onClick, disabled, children }) {
         cursor: disabled ? 'default' : 'pointer',
         transition: 'background .15s, color .15s',
       }}
-      onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = 'rgba(99,102,241,0.12)'; e.currentTarget.style.color = '#818cf8'; }}
+      onMouseEnter={e => { if (!disabled) { e.currentTarget.style.background = 'rgba(99,102,241,0.12)'; e.currentTarget.style.color = '#818cf8'; } }}
       onMouseLeave={e => { e.currentTarget.style.background = disabled ? 'transparent' : 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = disabled ? 'var(--border)' : 'var(--text-muted)'; }}
     >
       {children}
@@ -72,83 +103,119 @@ function OrderBtn({ onClick, disabled, children }) {
 
 export default function ModulesAdminPage() {
   const { user } = useAuthStore();
-  const { modules, toggleModule, toggleSubModule, moveModule, reset } = useModulesConfigStore();
+  const { modules, toggleModule, toggleSubmodule, reorderModules } = useModulesStore();
+  const [searchParams] = useSearchParams();
+  const slugParam = searchParams.get('slug'); // e.g. ?slug=rh
 
-  if (!['ADMIN', 'SUPER_ADMIN', 'DIRECTOR'].includes(user?.role)) {
-    return <Navigate to="/dashboard" replace />;
+  if (!isAtLeast(user?.role, 'MANAGER')) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '50vh', gap: 12, color: 'var(--text-muted)' }}>
+        <Settings size={40} style={{ opacity: 0.4 }} />
+        <div style={{ fontSize: 15, fontWeight: 600 }}>Accès réservé aux managers et supérieurs</div>
+      </div>
+    );
   }
 
-  const sorted  = [...modules].sort((a, b) => a.order - b.order);
-  const visible = sorted.filter(m => m.slug !== 'admin');
+  const isAdmin = isAtLeast(user?.role, 'DIRECTOR');
+  const dept    = normDept(user?.department);
+  const mySlugs = isAdmin ? null : (DEPT_TO_SLUGS[dept] ?? null);
+
+  const visible = [...modules]
+    .filter(m => m.slug !== 'admin')
+    .filter(m => {
+      // Admin/Director see everything; managers see their own modules
+      if (mySlugs === null) return true;
+      if (slugParam) return m.slug === slugParam;
+      return mySlugs.includes(m.slug);
+    })
+    .sort((a, b) => (a.sortOrder ?? 99) - (b.sortOrder ?? 99));
+
   const enabled  = visible.filter(m => m.enabled).length;
   const disabled = visible.filter(m => !m.enabled).length;
 
-  const handleToggleModule = (mod) => {
-    toggleModule(mod.slug);
-    toast.success(`"${mod.name}" ${mod.enabled ? 'désactivé 🔴' : 'activé ✅'}`);
+  const handleToggleModule = async (mod) => {
+    const result = await toggleModule(mod.id);
+    if (result?.success) {
+      toast.success(`"${mod.name}" ${mod.enabled ? 'désactivé 🔴' : 'activé ✅'}`);
+    } else {
+      toast.error('Erreur lors de la modification');
+    }
   };
 
-  const handleToggleSub = (mod, sub) => {
-    toggleSubModule(mod.slug, sub.key);
-    toast.success(`"${sub.name}" ${sub.enabled ? 'désactivé' : 'activé'}`);
+  const handleToggleSub = async (sub) => {
+    const result = await toggleSubmodule(sub.id);
+    if (result?.success) {
+      toast.success(`"${sub.name}" ${sub.enabled ? 'désactivé' : 'activé'}`);
+    } else {
+      toast.error('Accès refusé ou erreur');
+    }
   };
 
   const handleMove = (slug, dir) => {
-    moveModule(slug, dir);
+    const idx = visible.findIndex(m => m.slug === slug);
+    const newIdx = dir === 'up' ? idx - 1 : idx + 1;
+    if (newIdx < 0 || newIdx >= visible.length) return;
+    const swapped = [...visible];
+    [swapped[idx], swapped[newIdx]] = [swapped[newIdx], swapped[idx]];
+    const newOrder = swapped.map((m, i) => ({ id: m.id, sortOrder: i }));
+    reorderModules(newOrder);
   };
 
-  const handleReset = () => {
-    if (window.confirm('Remettre la configuration par défaut ?')) {
-      reset();
-      toast.success('Configuration réinitialisée');
-    }
-  };
+  // Title based on context
+  const pageTitle = !isAdmin && mySlugs
+    ? `⚙️ Configuration — ${visible[0]?.name || 'Mon module'}`
+    : '⚙️ Gestion des modules';
+
+  const pageDesc = !isAdmin
+    ? 'Activez ou désactivez les fonctionnalités de votre module'
+    : 'Activez/désactivez les modules et sous-modules · Réordonnez les départements dans la sidebar';
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto' }}>
 
-      {/* ── Header ───────────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
-            ⚙️ Gestion des modules
+            {pageTitle}
           </h1>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '4px 0 0' }}>
-            Activez/désactivez les modules et sous-modules · Réordonnez les départements dans la sidebar
-          </p>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '4px 0 0' }}>{pageDesc}</p>
         </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 8, padding: '7px 14px', fontSize: 12, color: '#10b981', fontWeight: 600 }}>
-            ✅ {enabled} actifs
+        {isAdmin && (
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 8, padding: '7px 14px', fontSize: 12, color: '#10b981', fontWeight: 600 }}>
+              ✅ {enabled} actifs
+            </div>
+            <div style={{ background: 'rgba(100,116,139,0.1)', border: '1px solid rgba(100,116,139,0.2)', borderRadius: 8, padding: '7px 14px', fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>
+              🔴 {disabled} désactivés
+            </div>
           </div>
-          <div style={{ background: 'rgba(100,116,139,0.1)', border: '1px solid rgba(100,116,139,0.2)', borderRadius: 8, padding: '7px 14px', fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>
-            🔴 {disabled} désactivés
-          </div>
-          <button
-            onClick={handleReset}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, color: '#f87171', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
-          >
-            <RotateCcw size={12} /> Réinitialiser
-          </button>
-        </div>
+        )}
       </div>
 
-      {/* ── Info banner ──────────────────────────────────────────── */}
       <div style={{ padding: '12px 16px', background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.18)', borderRadius: 10, fontSize: 12.5, color: '#a5b4fc', marginBottom: 18, display: 'flex', alignItems: 'center', gap: 10 }}>
         <span style={{ fontSize: 16 }}>💡</span>
-        Les changements sont <strong>instantanés</strong> — la sidebar se met à jour en temps réel. Les données sont sauvegardées dans le navigateur.
+        {isAdmin
+          ? <>Les changements sont <strong>instantanés</strong> — la sidebar se met à jour en temps réel.</>
+          : <>Vous pouvez activer ou désactiver les fonctionnalités de votre module. Les changements sont <strong>immédiats</strong>.</>
+        }
       </div>
 
-      {/* ── Module list ──────────────────────────────────────────── */}
+      {visible.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
+          <Settings size={36} style={{ opacity: 0.3, marginBottom: 12 }} />
+          <div style={{ fontSize: 14 }}>Aucun module à configurer pour votre département.</div>
+        </div>
+      )}
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {visible.map((mod, idx) => {
           const isFirst = idx === 0;
           const isLast  = idx === visible.length - 1;
-          const activeSubs   = mod.subModules.filter(s => s.enabled).length;
-          const totalSubs    = mod.subModules.length;
+          const activeSubs = (mod.subModules || []).filter(s => s.enabled).length;
+          const totalSubs  = (mod.subModules || []).length;
 
           return (
-            <div key={mod.slug} style={{
+            <div key={mod.id} style={{
               background: 'var(--bg-card)',
               border: `1px solid ${mod.enabled ? 'var(--border)' : 'rgba(100,116,139,0.2)'}`,
               borderLeft: `3px solid ${mod.enabled ? '#6366f1' : '#334155'}`,
@@ -158,30 +225,30 @@ export default function ModulesAdminPage() {
               transition: 'opacity .2s, border-color .2s',
             }}>
 
-              {/* Module row */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px' }}>
 
-                {/* Order controls */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
-                  <OrderBtn onClick={() => handleMove(mod.slug, 'up')} disabled={isFirst}>
-                    <ChevronUp size={13} />
-                  </OrderBtn>
-                  <OrderBtn onClick={() => handleMove(mod.slug, 'down')} disabled={isLast}>
-                    <ChevronDown size={13} />
-                  </OrderBtn>
-                </div>
+                {/* Reorder — admin only */}
+                {isAdmin && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
+                    <OrderBtn onClick={() => handleMove(mod.slug, 'up')} disabled={isFirst}>
+                      <ChevronUp size={13} />
+                    </OrderBtn>
+                    <OrderBtn onClick={() => handleMove(mod.slug, 'down')} disabled={isLast}>
+                      <ChevronDown size={13} />
+                    </OrderBtn>
+                  </div>
+                )}
 
-                {/* Position badge */}
-                <div style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(99,102,241,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#818cf8', flexShrink: 0 }}>
-                  {idx + 1}
-                </div>
+                {isAdmin && (
+                  <div style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(99,102,241,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#818cf8', flexShrink: 0 }}>
+                    {idx + 1}
+                  </div>
+                )}
 
-                {/* Icon */}
                 <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(99,102,241,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
                   {mod.icon}
                 </div>
 
-                {/* Name + desc */}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>{mod.name}</div>
                   <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 1 }}>
@@ -194,27 +261,22 @@ export default function ModulesAdminPage() {
                   </div>
                 </div>
 
-                {/* Status label */}
                 <div style={{ fontSize: 11, fontWeight: 600, color: mod.enabled ? '#10b981' : '#64748b', background: mod.enabled ? 'rgba(16,185,129,0.1)' : 'rgba(100,116,139,0.1)', border: `1px solid ${mod.enabled ? 'rgba(16,185,129,0.2)' : 'rgba(100,116,139,0.2)'}`, borderRadius: 6, padding: '3px 9px', flexShrink: 0 }}>
                   {mod.enabled ? 'Actif' : 'Désactivé'}
                 </div>
 
-                {/* Toggle */}
-                <Toggle
-                  checked={mod.enabled}
-                  onChange={() => handleToggleModule(mod)}
-                />
+                {/* Module-level toggle — admin/director only */}
+                {isAdmin && <Toggle checked={mod.enabled} onChange={() => handleToggleModule(mod)} />}
               </div>
 
-              {/* Sub-modules (only shown if module is enabled) */}
-              {mod.enabled && mod.subModules.length > 0 && (
+              {mod.enabled && (mod.subModules || []).length > 0 && (
                 <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', padding: '10px 18px 14px 18px' }}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.9, marginBottom: 8 }}>
                     Sous-modules
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 6 }}>
-                    {mod.subModules.map((sub) => (
-                      <div key={sub.key} style={{
+                    {(mod.subModules || []).map((sub) => (
+                      <div key={sub.id} style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                         padding: '8px 12px', background: 'rgba(255,255,255,0.03)',
                         borderRadius: 7, border: `1px solid ${sub.enabled ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.03)'}`,
@@ -224,11 +286,7 @@ export default function ModulesAdminPage() {
                           <span style={{ width: 6, height: 6, borderRadius: '50%', background: sub.enabled ? '#10b981' : '#475569', flexShrink: 0 }} />
                           <span style={{ fontSize: 12.5, color: sub.enabled ? 'var(--text-secondary)' : 'var(--text-muted)', fontWeight: 500 }}>{sub.name}</span>
                         </div>
-                        <Toggle
-                          checked={sub.enabled}
-                          onChange={() => handleToggleSub(mod, sub)}
-                          size="sm"
-                        />
+                        <Toggle checked={sub.enabled} onChange={() => handleToggleSub(sub)} size="sm" />
                       </div>
                     ))}
                   </div>

@@ -115,10 +115,36 @@ router.get('/', authenticate, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// Reorder modules — updates sortOrder in the global modules table
+router.patch('/reorder', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'DIRECTOR'), async (req, res, next) => {
+  try {
+    const { order } = req.body; // [{ id, sortOrder }]
+    if (!Array.isArray(order)) return res.status(400).json({ success: false, message: 'order must be an array' });
+    await prisma.$transaction(
+      order.map(({ id, sortOrder }) => prisma.module.update({ where: { id }, data: { sortOrder } }))
+    );
+    res.json({ success: true });
+  } catch (error) { next(error); }
+});
+
 // Must be before /:moduleId/toggle to avoid Express matching 'submodules' as moduleId
-router.patch('/submodules/:submoduleId/toggle', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'DIRECTOR'), async (req, res, next) => {
+router.patch('/submodules/:submoduleId/toggle', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'DIRECTOR', 'MANAGER'), async (req, res, next) => {
   try {
     const { submoduleId } = req.params;
+
+    // MANAGER: verify the submodule belongs to one of their allowed modules
+    if (req.user.role === 'MANAGER') {
+      const submodule = await prisma.subModule.findUnique({
+        where: { id: submoduleId },
+        include: { module: true },
+      });
+      if (!submodule) return res.status(404).json({ success: false, message: 'Sous-module non trouvé' });
+      const allowedSlugs = getAllowedSlugs(req.user);
+      if (allowedSlugs !== null && !allowedSlugs.includes(submodule.module.slug)) {
+        return res.status(403).json({ success: false, message: 'Accès refusé — module non autorisé' });
+      }
+    }
+
     const existing = await prisma.companySubmodule.findUnique({
       where: { companyId_submoduleId: { companyId: req.companyId, submoduleId } },
     });

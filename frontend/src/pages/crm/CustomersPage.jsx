@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customersAPI } from '../../api/client.js';
-import { Search, Plus, Edit2, Eye, Phone, Mail, Trash2, ChevronLeft, ChevronRight, Upload } from 'lucide-react';
+import { Search, Plus, Edit2, Eye, Phone, Mail, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CardGridSkeleton } from '../../components/ui/Skeleton.jsx';
+import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
-import ImportModal from '../../components/ImportModal.jsx';
 
 const STATUS = {
   ACTIVE:   { label: 'Client actif', color: '#10b981' },
@@ -85,6 +86,7 @@ const CustomerForm = ({ initial, onSubmit, onCancel, isLoading }) => {
 /* ── Main ─────────────────────────────────────────────────── */
 export default function CustomersPage() {
   const queryClient = useQueryClient();
+  const { confirm, modal: confirmModal } = useConfirm();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -131,9 +133,6 @@ export default function CustomersPage() {
           <p className="page-subtitle">{pagination.total || 0} clients · {customers.filter(c => c.status === 'ACTIVE').length} actifs</p>
         </div>
         <div style={{ display:'flex', gap:8 }}>
-          <motion.button className="btn btn--ghost" onClick={() => setModal('import')} whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
-            <Upload size={15} /> Importer
-          </motion.button>
           <motion.button className="btn btn--primary" onClick={() => setModal('create')}
             whileHover={{ scale: 1.04, boxShadow: '0 0 20px rgba(99,102,241,0.4)' }} whileTap={{ scale: 0.96 }}>
             <Plus size={16} /> Ajouter client
@@ -161,17 +160,18 @@ export default function CustomersPage() {
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {[['', 'Tous'], ['ACTIVE', 'Actifs'], ['PROSPECT', 'Prospects'], ['LEAD', 'Leads'], ['INACTIVE', 'Inactifs']].map(([val, label]) => (
-            <motion.button key={val} className={`btn ${filterStatus === val ? 'btn--primary' : 'btn--ghost'}`}
-              style={{ padding: '6px 12px', fontSize: 12 }}
+            <motion.div key={val}
+              className={`filter-pill${filterStatus === val ? ' active' : ''}`}
+              style={filterStatus === val ? { background: 'rgba(99,102,241,0.12)', borderColor: 'rgba(99,102,241,0.35)', color: '#818cf8' } : {}}
               whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.95 }}
-              onClick={() => { setFilterStatus(val); setPage(1); }}>{label}</motion.button>
+              onClick={() => { setFilterStatus(val); setPage(1); }}>{label}</motion.div>
           ))}
         </div>
       </motion.div>
 
       {/* CARDS */}
       {isLoading ? (
-        <motion.div variants={fadeUp} style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Chargement…</motion.div>
+        <motion.div variants={fadeUp}><CardGridSkeleton count={6} minWidth={300} /></motion.div>
       ) : customers.length === 0 ? (
         <motion.div variants={fadeUp} style={{ textAlign: 'center', padding: 60, color: 'var(--text-muted)' }}>
           <motion.div style={{ fontSize: 52, marginBottom: 16 }}
@@ -197,7 +197,12 @@ export default function CustomersPage() {
                     <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{customer.country || '—'}</div>
                   </div>
                 </div>
-                <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 500, background: (STATUS[customer.status]?.color || '#64748b') + '22', color: STATUS[customer.status]?.color || '#64748b' }}>
+                <span className={`badge badge--${
+                  customer.status === 'ACTIVE' ? 'green' :
+                  customer.status === 'PROSPECT' ? 'indigo' :
+                  customer.status === 'LEAD' ? 'orange' :
+                  customer.status === 'LOST' ? 'red' : 'gray'
+                } badge--dot`}>
                   {STATUS[customer.status]?.label || customer.status}
                 </span>
               </div>
@@ -220,7 +225,7 @@ export default function CustomersPage() {
                 </motion.button>
                 <motion.button className="icon-btn icon-btn--danger" title="Archiver"
                   whileHover={{ scale: 1.12 }} whileTap={{ scale: 0.88 }}
-                  onClick={() => { if (window.confirm('Archiver ce client ?')) deleteMutation.mutate(customer.id); }}>
+                  onClick={async () => { const ok = await confirm({ title: 'Archiver ce client ?', message: `"${customer.name}" sera archivé et retiré de la liste active.`, confirmLabel: 'Archiver', variant: 'warning' }); if (ok) deleteMutation.mutate(customer.id); }}>
                   <Trash2 size={14} />
                 </motion.button>
               </div>
@@ -239,9 +244,6 @@ export default function CustomersPage() {
       )}
 
       {/* MODALS */}
-      {modal === 'import' && (
-        <ImportModal type="customers" label="clients" onClose={() => setModal(null)} onSuccess={() => queryClient.invalidateQueries({ queryKey: ['customers'] })} />
-      )}
       {modal === 'create' && (
         <Modal title="Nouveau client" onClose={() => setModal(null)}>
           <CustomerForm onSubmit={(data) => createMutation.mutate(data)} onCancel={() => setModal(null)} isLoading={createMutation.isPending} />
@@ -284,6 +286,7 @@ export default function CustomersPage() {
           </div>
         </Modal>
       )}
+      {confirmModal}
     </motion.div>
   );
 }

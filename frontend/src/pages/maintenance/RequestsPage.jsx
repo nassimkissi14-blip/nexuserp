@@ -159,6 +159,7 @@ export default function RequestsPage() {
   const [modal, setModal] = useState(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
 
   const inv = () => {
     qc.invalidateQueries({ queryKey: ['maint-requests'] });
@@ -173,8 +174,9 @@ export default function RequestsPage() {
 
   const filtered = requests.filter(r => {
     const matchStatus = !statusFilter || r.status === statusFilter;
+    const matchType   = !typeFilter   || r.type   === typeFilter;
     const matchSearch = !search || r.title?.toLowerCase().includes(search.toLowerCase()) || r.number?.toLowerCase().includes(search.toLowerCase()) || r.equipment?.name?.toLowerCase().includes(search.toLowerCase());
-    return matchStatus && matchSearch;
+    return matchStatus && matchType && matchSearch;
   });
 
   const createReq = useMutation({
@@ -225,6 +227,27 @@ export default function RequestsPage() {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Type tabs */}
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', padding: '4px 0' }}>
+          {[['', 'Toutes'], ...Object.entries(REQ_TYPE).map(([k, v]) => [k, v.label])].map(([k, label]) => {
+            const count = k ? requests.filter(r => r.type === k).length : requests.length;
+            const color = k ? (REQ_TYPE[k]?.color || '#64748b') : 'var(--accent-primary)';
+            const active = typeFilter === k;
+            return (
+              <button key={k} onClick={() => setTypeFilter(k)} style={{
+                padding: '6px 14px', borderRadius: 20, border: `1px solid ${active ? color : 'var(--border)'}`,
+                background: active ? color + '22' : 'var(--bg-card)',
+                color: active ? color : 'var(--text-secondary)',
+                fontSize: 12, fontWeight: active ? 700 : 500, cursor: 'pointer',
+                transition: 'var(--transition)', display: 'flex', alignItems: 'center', gap: 6,
+              }}>
+                {label}
+                <span style={{ background: active ? color + '33' : 'var(--bg-primary)', borderRadius: 10, padding: '1px 7px', fontSize: 11, fontWeight: 700, color: active ? color : 'var(--text-muted)' }}>{count}</span>
+              </button>
+            );
+          })}
         </div>
 
         {/* Filters */}

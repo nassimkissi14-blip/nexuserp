@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { leavesAPI, employeesAPI } from '../../api/client.js';
 import { Plus, Check, X, Clock, Trash2 } from 'lucide-react';
+import { TableSkeleton } from '../../components/ui/Skeleton.jsx';
 import toast from 'react-hot-toast';
+import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 
 const LEAVE_TYPES = {
   ANNUAL: 'Congé annuel',
@@ -99,6 +101,7 @@ const LeaveForm = ({ employees, onSubmit, onCancel, isLoading }) => {
 
 export default function LeavesPage() {
   const queryClient = useQueryClient();
+  const { confirm, modal: confirmModal } = useConfirm();
   const [filter, setFilter] = useState('ALL');
   const [showForm, setShowForm] = useState(false);
 
@@ -164,23 +167,27 @@ export default function LeavesPage() {
           { label: 'Approuvés', value: counts.approved, color: '#10b981', icon: '✅' },
           { label: 'Refusés', value: counts.rejected, color: '#ef4444', icon: '❌' },
         ].map((s, i) => (
-          <div key={i} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16 }}>
-            <div style={{ fontSize: 24, marginBottom: 8 }}>{s.icon}</div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: s.color }}>{s.value}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{s.label}</div>
+          <div key={i} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderTop: `3px solid ${s.color}`, borderRadius: 'var(--radius-lg)', padding: 16 }}>
+            <div style={{ fontSize: 24, marginBottom: 10 }}>{s.icon}</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: s.color, letterSpacing: -0.5 }}>{s.value}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 500 }}>{s.label}</div>
           </div>
         ))}
       </div>
 
       {/* FILTRES */}
-      <div style={{ display: 'flex', gap: 8 }}>
-        {['ALL', 'PENDING', 'APPROVED', 'REJECTED'].map(f => (
-          <button key={f} className={`btn ${filter === f ? 'btn--primary' : 'btn--ghost'}`}
-            style={{ padding: '6px 14px', fontSize: 13 }}
-            onClick={() => setFilter(f)}>
-            {f === 'ALL' ? 'Tous' : STATUS[f]?.label}
-          </button>
-        ))}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {['ALL', 'PENDING', 'APPROVED', 'REJECTED'].map(f => {
+          const color = f === 'PENDING' ? '#f59e0b' : f === 'APPROVED' ? '#10b981' : f === 'REJECTED' ? '#ef4444' : undefined;
+          return (
+            <div key={f}
+              className={`filter-pill${filter === f ? ' active' : ''}`}
+              style={filter === f ? { background: color ? `${color}18` : 'rgba(99,102,241,0.12)', borderColor: color ? `${color}44` : 'rgba(99,102,241,0.35)', color: color || '#818cf8' } : {}}
+              onClick={() => setFilter(f)}>
+              {f === 'ALL' ? 'Tous' : STATUS[f]?.label}
+            </div>
+          );
+        })}
       </div>
 
       {/* TABLE */}
@@ -191,7 +198,7 @@ export default function LeavesPage() {
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={6} className="table-loading">Chargement…</td></tr>
+              <tr><td colSpan={6} style={{ padding: 0 }}><TableSkeleton rows={5} cols={6} /></td></tr>
             ) : requests.length === 0 ? (
               <tr><td colSpan={6} className="table-empty">Aucune demande trouvée</td></tr>
             ) : requests.map(req => (
@@ -206,13 +213,8 @@ export default function LeavesPage() {
                 </td>
                 <td style={{ fontWeight: 600 }}>{req.days}j</td>
                 <td>
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 5,
-                    padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 500,
-                    background: STATUS[req.status]?.color + '22',
-                    color: STATUS[req.status]?.color,
-                  }}>
-                    {STATUS[req.status]?.icon} {STATUS[req.status]?.label}
+                  <span className={`badge badge--${req.status === 'APPROVED' ? 'green' : req.status === 'REJECTED' ? 'red' : req.status === 'CANCELLED' ? 'gray' : 'orange'} badge--dot`}>
+                    {STATUS[req.status]?.label}
                   </span>
                 </td>
                 <td>
@@ -224,7 +226,7 @@ export default function LeavesPage() {
                         <button className="btn btn--ghost" style={{ padding: '5px 12px', fontSize: 12, color: '#ef4444' }}
                           onClick={() => rejectMutation.mutate(req.id)}>❌ Refuser</button>
                         <button className="icon-btn icon-btn--danger" title="Annuler"
-                          onClick={() => { if (window.confirm('Annuler cette demande ?')) cancelMutation.mutate(req.id); }}>
+                          onClick={async () => { const ok = await confirm({ title: 'Annuler cette demande ?', message: 'La demande de congé sera annulée.', confirmLabel: 'Annuler', variant: 'warning' }); if (ok) cancelMutation.mutate(req.id); }}>
                           <Trash2 size={14} />
                         </button>
                       </>
@@ -247,6 +249,7 @@ export default function LeavesPage() {
           />
         </Modal>
       )}
+      {confirmModal}
     </div>
   );
 }

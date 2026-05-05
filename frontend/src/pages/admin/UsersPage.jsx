@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from '../../api/client.js';
 import { Plus, Edit2, UserX, UserCheck, Shield, MoreVertical, Info, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 
 const usersAPI = {
   getAll: () => apiClient.get('/users').then(r => r.data),
@@ -119,6 +120,7 @@ const UserForm = ({ initial, onSubmit, onCancel, isLoading }) => {
 
 export default function UsersPage() {
   const queryClient = useQueryClient();
+  const { confirm, modal: confirmModal } = useConfirm();
   const [modal, setModal] = useState(null);
   const [showMatrix, setShowMatrix] = useState(false);
 
@@ -246,7 +248,7 @@ export default function UsersPage() {
                     user={user}
                     onEdit={() => setModal({ type: 'edit', user })}
                     onToggle={() => toggleMutation.mutate({ id: user.id, isActive: !user.isActive })}
-                    onDelete={() => { if (window.confirm(`Supprimer définitivement "${user.firstName} ${user.lastName}" ?`)) deleteMutation.mutate(user.id); }}
+                    onDelete={async () => { const ok = await confirm({ title: `Supprimer "${user.firstName} ${user.lastName}" ?`, message: 'Cette action est irréversible.', confirmLabel: 'Supprimer', variant: 'danger' }); if (ok) deleteMutation.mutate(user.id); }}
                   />
                 </td>
               </tr>
@@ -270,6 +272,7 @@ export default function UsersPage() {
           />
         </Modal>
       )}
+      {confirmModal}
     </div>
   );
 }

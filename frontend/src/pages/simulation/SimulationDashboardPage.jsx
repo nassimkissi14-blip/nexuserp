@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Cpu, Activity, Clock, Package, Zap, Code2, X, Wifi, WifiOff } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 import apiClient from '../../api/client.js';
 import { useSimulationStore } from '../../store/simulationStore.js';
 
@@ -209,6 +210,7 @@ function WaitingScreen({ session, onGuide }) {
 ══════════════════════════════════════════════════════════════════ */
 export default function SimulationDashboardPage() {
   const queryClient = useQueryClient();
+  const { confirm, modal: confirmModal } = useConfirm();
   const [selected, setSelected]     = useState(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showGuide, setShowGuide]   = useState(false);
@@ -344,7 +346,7 @@ export default function SimulationDashboardPage() {
                     <Code2 size={13} /> Intégration
                   </button>
                   <button className="btn btn--ghost" style={{ fontSize: 12, color: '#ef4444' }}
-                    onClick={() => { if (window.confirm('Supprimer cette session ?')) deleteMut.mutate(selected.id); }}>
+                    onClick={async () => { const ok = await confirm({ title: 'Supprimer cette session ?', confirmLabel: 'Supprimer', variant: 'danger' }); if (ok) deleteMut.mutate(selected.id); }}>
                     <Trash2 size={13} />
                   </button>
                 </div>
@@ -472,6 +474,7 @@ export default function SimulationDashboardPage() {
       )}
 
       <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }`}</style>
+      {confirmModal}
     </div>
   );
 }

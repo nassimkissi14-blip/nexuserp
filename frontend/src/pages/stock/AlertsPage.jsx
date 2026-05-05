@@ -3,12 +3,14 @@ import { productsAPI } from '../../api/client.js';
 import apiClient from '../../api/client.js';
 import { AlertTriangle, XCircle, TrendingUp } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 
 const movementsAPI = { create: (data) => apiClient.post('/movements', data) };
 const fmt = (n) => new Intl.NumberFormat('fr-DZ').format(Number(n) || 0) + ' DZD';
 
 export default function AlertsPage() {
   const queryClient = useQueryClient();
+  const { confirm, modal: confirmModal } = useConfirm();
 
   const { data, isLoading } = useQuery({
     queryKey: ['products-alerts'],
@@ -56,7 +58,7 @@ export default function AlertsPage() {
         </div>
 
         <button className="btn btn--primary" style={{ fontSize: 12, padding: '6px 14px' }}
-          onClick={() => { if (window.confirm(`Enregistrer une entrée de ${suggested} ${product.unit} pour "${product.name}" ?`)) reorderMutation.mutate({ productId: product.id, quantity: suggested }); }}>
+          onClick={async () => { const ok = await confirm({ title: `Réapprovisionner "${product.name}" ?`, message: `Enregistrer une entrée de ${suggested} ${product.unit}.`, confirmLabel: 'Confirmer', variant: 'info' }); if (ok) reorderMutation.mutate({ productId: product.id, quantity: suggested }); }}>
           <TrendingUp size={13} /> Réapprovisionner ({suggested} {product.unit})
         </button>
       </div>
@@ -121,6 +123,7 @@ export default function AlertsPage() {
           )}
         </>
       )}
+      {confirmModal}
     </div>
   );
 }

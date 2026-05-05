@@ -129,6 +129,9 @@ router.get('/supplier-catalog', authenticate, async (req, res, next) => {
 router.post('/supplier-catalog', authenticate, authorize(...MGR), async (req, res, next) => {
   try {
     const { supplierId, productId, price, leadTime, minQty, isDefault, reference } = req.body;
+    if (!supplierId || !productId) {
+      return res.status(400).json({ success: false, message: 'Fournisseur et article sont obligatoires' });
+    }
     if (isDefault) {
       await prisma.supplierCatalog.updateMany({
         where: { companyId: req.companyId, productId, isDefault: true },
@@ -136,13 +139,66 @@ router.post('/supplier-catalog', authenticate, authorize(...MGR), async (req, re
       });
     }
     const entry = await prisma.supplierCatalog.create({
-      data: { companyId: req.companyId, supplierId, productId, price: price ?? 0, leadTime: leadTime ?? 0, minQty: minQty ?? 1, isDefault: isDefault ?? false, reference },
+      data: { companyId: req.companyId, supplierId, productId, price: price ?? 0, leadTime: Math.round(leadTime ?? 0), minQty: minQty ?? 1, isDefault: isDefault ?? false, reference: reference || null },
       include: {
         supplier: { select: { id: true, name: true } },
         product: { select: { id: true, name: true, sku: true } },
       },
     });
     res.status(201).json({ success: true, data: entry });
+  } catch (e) {
+    if (e.code === 'P2002') {
+      return res.status(409).json({ success: false, message: 'Ce fournisseur propose déjà ce produit dans le catalogue' });
+    }
+    next(e);
+  }
+});
+
+router.post('/supplier-catalog/bulk', authenticate, authorize(...MGR), async (req, res, next) => {
+  try {
+    const { supplierId, items = [] } = req.body;
+    if (!supplierId) return res.status(400).json({ success: false, message: 'Fournisseur obligatoire' });
+    const validItems = items.filter(i => i.productId);
+    if (!validItems.length) return res.status(400).json({ success: false, message: 'Ajoutez au moins un article' });
+
+    const created = [];
+    const skipped = [];
+
+    for (const item of validItems) {
+      try {
+        if (item.isDefault) {
+          await prisma.supplierCatalog.updateMany({
+            where: { companyId: req.companyId, productId: item.productId, isDefault: true },
+            data: { isDefault: false },
+          });
+        }
+        const entry = await prisma.supplierCatalog.create({
+          data: {
+            companyId: req.companyId,
+            supplierId,
+            productId:  item.productId,
+            price:      item.price    ?? 0,
+            leadTime:   Math.round(item.leadTime ?? 0),
+            minQty:     item.minQty   ?? 1,
+            isDefault:  item.isDefault ?? false,
+            reference:  item.reference || null,
+          },
+          include: {
+            supplier: { select: { id: true, name: true } },
+            product:  { select: { id: true, name: true, sku: true } },
+          },
+        });
+        created.push(entry);
+      } catch (e) {
+        if (e.code === 'P2002') { skipped.push(item.productId); }
+        else throw e;
+      }
+    }
+
+    const msg = skipped.length
+      ? `${created.length} article(s) ajouté(s), ${skipped.length} doublon(s) ignoré(s)`
+      : `${created.length} article(s) ajouté(s) au catalogue`;
+    res.status(201).json({ success: true, data: created, skipped: skipped.length, message: msg });
   } catch (e) { next(e); }
 });
 
@@ -188,11 +244,30 @@ router.get('/calendars', authenticate, async (req, res, next) => {
 
 router.post('/calendars', authenticate, authorize(...MGR), async (req, res, next) => {
   try {
-    const { name, year, weekStart, weekDuration } = req.body;
+    const { name, year, weekStart, weekDuration, weekendType } = req.body;
     const calendar = await prisma.workCalendar.create({
-      data: { companyId: req.companyId, name, year: parseInt(year), weekStart: weekStart ?? '08:00', weekDuration: weekDuration ?? 8 },
+      data: { companyId: req.companyId, name, year: parseInt(year), weekStart: weekStart ?? '08:00', weekDuration: weekDuration ?? 8, weekendType: weekendType ?? 'SS' },
     });
     res.status(201).json({ success: true, data: calendar });
+  } catch (e) { next(e); }
+});
+
+router.patch('/calendars/:id', authenticate, authorize(...MGR), async (req, res, next) => {
+  try {
+    const { name, weekStart, weekDuration, weekendType } = req.body;
+    const cal = await prisma.workCalendar.findFirst({ where: { id: req.params.id, companyId: req.companyId } });
+    if (!cal) return res.status(404).json({ success: false, message: 'Calendrier non trouvé' });
+    const updated = await prisma.workCalendar.update({
+      where: { id: req.params.id },
+      data: {
+        ...(name        !== undefined && { name }),
+        ...(weekStart   !== undefined && { weekStart }),
+        ...(weekDuration !== undefined && { weekDuration }),
+        ...(weekendType !== undefined && { weekendType }),
+      },
+      include: { days: { orderBy: { date: 'asc' } } },
+    });
+    res.json({ success: true, data: updated });
   } catch (e) { next(e); }
 });
 
@@ -208,9 +283,22 @@ router.post('/calendars/:id/generate', authenticate, authorize(...MGR), async (r
     const days = [];
     const closedSet = new Set(closedDates.map(d => new Date(d).toDateString()));
 
+    // Determine weekend days based on calendar's weekendType
+    // getDay(): 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
+    const wt = calendar.weekendType || 'SS';
+    const isWeekendDay = (dow) => {
+      if (wt === 'FS')   return dow === 5 || dow === 6; // Vendredi + Samedi
+      if (wt === 'SS')   return dow === 0 || dow === 6; // Samedi + Dimanche
+      if (wt === 'F')    return dow === 5;              // Vendredi seul
+      if (wt === 'S')    return dow === 6;              // Samedi seul
+      if (wt === 'D')    return dow === 0;              // Dimanche seul
+      if (wt === 'NONE') return false;
+      return dow === 0 || dow === 6;
+    };
+
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const dow = d.getDay(); // 0=dim, 6=sam
-      const isWeekend = dow === 0 || dow === 6;
+      const dow = d.getDay();
+      const isWeekend = isWeekendDay(dow);
       const isClosed = closedSet.has(d.toDateString());
       days.push({
         calendarId: req.params.id,
@@ -504,19 +592,47 @@ router.post('/mrp/run', authenticate, authorize(...MGR), async (req, res, next) 
 async function computeOfDuration(productId, quantity, companyId) {
   const routing = await prisma.routing.findFirst({
     where: { companyId, productId, isActive: true },
-    include: { phases: { orderBy: { sequence: 'asc' } } },
+    include: {
+      phases: {
+        include: { workCenter: { select: { id: true, name: true, code: true } } },
+        orderBy: { sequence: 'asc' },
+      },
+    },
   });
   if (!routing || routing.phases.length === 0) {
     const product = await prisma.product.findUnique({ where: { id: productId }, select: { leadTime: true } });
-    return { hours: (product?.leadTime ?? 1) * 8, phases: [] };
+    const leadTime = product?.leadTime ?? 1;
+    const hours = leadTime * 8;
+    return {
+      hours,
+      phases: [],
+      routingId: null,
+      routingCode: null,
+      note: `Aucune gamme active — délai d'obtention produit : ${leadTime}j × 8h = ${hours}h`,
+    };
   }
   let totalHours = 0;
   const phases = routing.phases.map(p => {
-    const phaseHours = p.setupTime + (p.machineTime * quantity) + p.transferTime;
+    const setupH    = p.setupTime   || 0;
+    const machineH  = (p.machineTime || 0) * quantity;
+    const laborH    = (p.laborTime   || 0) * quantity;
+    const transferH = p.transferTime || 0;
+    const phaseHours = setupH + machineH + transferH;
     totalHours += phaseHours;
-    return { ...p, durationHours: phaseHours };
+    return {
+      sequence:         p.sequence,
+      name:             p.name,
+      workCenter:       p.workCenter,
+      setupTime:        setupH,
+      machineTimeUnit:  p.machineTime || 0,
+      machineTimeTotal: machineH,
+      laborTimeUnit:    p.laborTime || 0,
+      laborTimeTotal:   laborH,
+      transferTime:     transferH,
+      durationHours:    phaseHours,
+    };
   });
-  return { hours: totalHours, phases, routingId: routing.id };
+  return { hours: totalHours, phases, routingId: routing.id, routingCode: routing.code || routing.name };
 }
 
 // Jalonnement au plus tôt (forward) et au plus tard (backward)
@@ -536,34 +652,56 @@ router.post('/scheduling/run', authenticate, authorize(...MGR), async (req, res,
     const results = [];
 
     for (const of_ of ofs) {
-      const { hours } = await computeOfDuration(of_.productId, of_.quantity, req.companyId);
+      const { hours, phases, routingCode, note } = await computeOfDuration(of_.productId, of_.quantity, req.companyId);
       const durationMs = hours * 3600000;
 
-      // Au plus tôt : démarre maintenant
+      // Au plus tôt : démarre à la date planifiée (ou maintenant)
       const earlyStart = of_.plannedStart ? new Date(of_.plannedStart) : now;
-      const earlyEnd = new Date(earlyStart.getTime() + durationMs);
+      const earlyEnd   = new Date(earlyStart.getTime() + durationMs);
 
       // Au plus tard : finit à la date de besoin
-      const needDate = of_.needDate ? new Date(of_.needDate) : new Date(now.getTime() + 30 * 86400000);
-      const lateEnd = needDate;
+      const needDate  = of_.needDate ? new Date(of_.needDate) : new Date(now.getTime() + 30 * 86400000);
+      const lateEnd   = needDate;
       const lateStart = new Date(lateEnd.getTime() - durationMs);
 
       // Marge
-      const marginMs = needDate.getTime() - earlyEnd.getTime();
+      const marginMs   = needDate.getTime() - earlyEnd.getTime();
       const marginDays = marginMs / 86400000;
-      const isLate = marginDays < 0;
+      const isLate     = marginDays < 0;
 
       await prisma.productionOrder.update({
         where: { id: of_.id },
-        data: {
-          scheduledStart: earlyStart,
-          scheduledEnd: earlyEnd,
-          lateScheduledStart: lateStart,
-          lateScheduledEnd: lateEnd,
-          marginDays,
-          isLate,
-        },
+        data: { scheduledStart: earlyStart, scheduledEnd: earlyEnd, lateScheduledStart: lateStart, lateScheduledEnd: lateEnd, marginDays, isLate },
       });
+
+      // Jalonnement phase par phase (au plus tôt)
+      let phaseStart = new Date(earlyStart);
+      const phasesScheduled = phases.map(p => {
+        const phaseEnd = new Date(phaseStart.getTime() + p.durationHours * 3600000);
+        const s = { ...p, scheduledStart: new Date(phaseStart), scheduledEnd: new Date(phaseEnd) };
+        phaseStart = phaseEnd;
+        return s;
+      });
+
+      // ── Sauvegarder les opérations jalonnées en base (nécessaire pour le tableau de charges)
+      await prisma.productionOperation.deleteMany({ where: { productionOrderId: of_.id } });
+      if (phasesScheduled.length > 0) {
+        await prisma.productionOperation.createMany({
+          data: phasesScheduled.map(p => ({
+            productionOrderId: of_.id,
+            workCenterId:      p.workCenter?.id  || null,
+            sequence:          p.sequence,
+            name:              p.name,
+            setupTime:         p.setupTime        || 0,
+            machineTime:       p.machineTimeUnit   || 0,
+            laborTime:         p.laborTimeUnit     || 0,
+            transferTime:      p.transferTime      || 0,
+            estimatedHours:    p.durationHours,
+            scheduledStart:    p.scheduledStart,
+            scheduledEnd:      p.scheduledEnd,
+          })),
+        });
+      }
 
       results.push({
         id: of_.id,
@@ -576,6 +714,20 @@ router.post('/scheduling/run', authenticate, authorize(...MGR), async (req, res,
         marginDays: Math.round(marginDays * 10) / 10,
         isLate,
         durationHours: hours,
+        // Détails du calcul
+        routingCode,
+        durationNote: note,
+        phases: phasesScheduled,
+        calcDetail: {
+          durationFormula: phases.length
+            ? phases.map(p => `${p.name}: ${p.setupTime}h réglage + ${p.machineTimeUnit}h×${of_.quantity} = ${p.durationHours.toFixed(2)}h`).join(' | ')
+            : note,
+          earlyStartSource: of_.plannedStart ? 'Date planifiée OF' : 'Date du jour (lancement immédiat)',
+          earlyEndFormula:  `Début + ${hours.toFixed(2)}h de fabrication`,
+          lateEndSource:    of_.needDate ? 'Date de besoin OF' : 'Aujourd\'hui + 30 jours (défaut)',
+          lateStartFormula: `Date besoin − ${hours.toFixed(2)}h de fabrication`,
+          marginFormula:    `(Date besoin − Fin au plus tôt) ÷ 24 = ${marginDays.toFixed(2)} jours`,
+        },
       });
     }
 

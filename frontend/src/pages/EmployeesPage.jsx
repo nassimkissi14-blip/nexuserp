@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { employeesAPI } from '../api/client.js';
 import { Search, Plus, Edit2, Trash2, Eye, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useConfirm } from '../components/ui/ConfirmModal.jsx';
 
 const DEPARTMENTS = ['Direction', 'Ressources Humaines', 'Finance', 'CRM & Ventes', 'Production', 'Logistique', 'IT'];
 const CONTRACT_TYPES = ['CDI', 'CDD', 'INTERIM', 'STAGE', 'FREELANCE'];
@@ -100,6 +101,7 @@ const EmployeeForm = ({ initial, onSubmit, onCancel, isLoading }) => {
 
 export default function EmployeesPage() {
   const queryClient = useQueryClient();
+  const { confirm, modal: confirmModal } = useConfirm();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [filterDept, setFilterDept] = useState('');
@@ -205,7 +207,7 @@ export default function EmployeesPage() {
                       <Edit2 size={15} />
                     </button>
                     <button className="icon-btn icon-btn--danger" title="Archiver"
-                      onClick={() => { if (window.confirm('Archiver cet employé ?')) deleteMutation.mutate(emp.id); }}>
+                      onClick={async () => { const ok = await confirm({ title: 'Archiver cet employé ?', confirmLabel: 'Archiver', variant: 'warning' }); if (ok) deleteMutation.mutate(emp.id); }}>
                       <Trash2 size={15} />
                     </button>
                   </div>
@@ -268,6 +270,7 @@ export default function EmployeesPage() {
           </div>
         </Modal>
       )}
+      {confirmModal}
     </div>
   );
 }

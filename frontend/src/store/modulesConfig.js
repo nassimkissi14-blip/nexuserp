@@ -5,7 +5,7 @@ import { persist } from 'zustand/middleware';
 // This is the single source of truth for sidebar navigation.
 // order: determines sidebar position (lower = higher in list)
 // VERSION: bump this when adding new submodules to trigger migration for cached users
-const CONFIG_VERSION = 5;
+const CONFIG_VERSION = 7;
 
 const DEFAULT_MODULES = [
   {
@@ -46,7 +46,6 @@ const DEFAULT_MODULES = [
     subModules: [
       { key: 'suppliers',  name: 'Fournisseurs', route: '/purchases/suppliers',  enabled: true },
       { key: 'orders',     name: 'Commandes',    route: '/purchases/orders',     enabled: true },
-      { key: 'receptions', name: 'Réceptions',   route: '/purchases/receptions', enabled: true },
     ],
   },
   {
@@ -101,7 +100,7 @@ const DEFAULT_MODULES = [
     enabled: true, order: 8,
     subModules: [
       { key: 'equipment',   name: 'Parc machines', route: '/maintenance/equipment',   enabled: true },
-      { key: 'requests',    name: 'Demandes',      route: '/maintenance/requests',    enabled: true },
+      { key: 'requests',    name: 'Correctif',      route: '/maintenance/requests',    enabled: true },
       { key: 'work-orders', name: 'Correctif',     route: '/maintenance/work-orders', enabled: true },
       { key: 'orders',      name: 'Ordres',        route: '/maintenance/orders',      enabled: true },
       { key: 'preventive',  name: 'Préventif',     route: '/maintenance/preventive',  enabled: true },
@@ -152,8 +151,16 @@ function mergeWithDefaults(persisted) {
     const saved = persisted.modules.find(m => m.slug === def.slug);
     if (!saved) return def;
 
-    // Keep user's enabled/order preferences, but ensure all default subModules exist
-    const savedSubKeys = new Set((saved.subModules || []).map(s => s.key));
+    // Keep user's enabled/order preferences, filter out removed subModules, add new ones
+    // Always sync name and route from defaults to pick up renames
+    const defSubKeys = new Set(def.subModules.map(s => s.key));
+    const validSaved = (saved.subModules || [])
+      .filter(s => defSubKeys.has(s.key))
+      .map(s => {
+        const defSub = def.subModules.find(d => d.key === s.key);
+        return { ...s, name: defSub.name, route: defSub.route };
+      });
+    const savedSubKeys = new Set(validSaved.map(s => s.key));
     const missingSubMods = def.subModules.filter(s => !savedSubKeys.has(s.key));
 
     return {
@@ -161,7 +168,7 @@ function mergeWithDefaults(persisted) {
       enabled: saved.enabled ?? def.enabled,
       order:   saved.order   ?? def.order,
       subModules: [
-        ...(saved.subModules || []),
+        ...validSaved,
         ...missingSubMods,
       ],
     };

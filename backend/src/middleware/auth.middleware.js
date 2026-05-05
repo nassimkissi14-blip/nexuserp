@@ -51,7 +51,7 @@ export const authService = {
     if (!user) throw new Error('Email ou mot de passe incorrect');
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) throw new Error('Email ou mot de passe incorrect');
-    if (!user.isActive) throw new Error('Compte désactivé');
+    if (!user.isActive) throw new Error('COMPTE_EN_ATTENTE');
 
     await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
 

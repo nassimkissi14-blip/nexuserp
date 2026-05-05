@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, Edit2, Trash2, Check, ChevronDown } from 'lucide-react';
 import { projectsAPI } from '../../api/client.js';
 import toast from 'react-hot-toast';
+import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 
 const STATUS = {
   TODO:        { label: 'À faire',     color: '#64748b', icon: '📋' },
@@ -32,6 +33,7 @@ const emptyForm = (projectId = '') => ({
 
 export default function TasksPage() {
   const queryClient = useQueryClient();
+  const { confirm, modal: confirmModal } = useConfirm();
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [filterProject, setFilterProject] = useState('ALL');
@@ -146,7 +148,7 @@ export default function TasksPage() {
                         <div style={{ display: 'flex', gap: 4 }}>
                           {statusKey !== 'DONE' && <button className="icon-btn" style={{ padding: 2 }} title="Marquer terminé" onClick={() => quickStatus(task, 'DONE')}><Check size={11} /></button>}
                           <button className="icon-btn" style={{ padding: 2 }} onClick={() => { setForm({ projectId: task.project?.id || '', title: task.title, description: task.description || '', status: task.status, priority: task.priority, dueDate: task.dueDate?.split('T')[0] || '' }); setModal({ type: 'edit', task }); }}><Edit2 size={11} /></button>
-                          <button className="icon-btn icon-btn--danger" style={{ padding: 2 }} onClick={() => { if (window.confirm('Supprimer ?')) deleteMutation.mutate(task.id); }}><Trash2 size={11} /></button>
+                          <button className="icon-btn icon-btn--danger" style={{ padding: 2 }} onClick={async () => { const ok = await confirm({ title: 'Supprimer cette tâche ?', confirmLabel: 'Supprimer', variant: 'danger' }); if (ok) deleteMutation.mutate(task.id); }}><Trash2 size={11} /></button>
                         </div>
                       </div>
                       {task.dueDate && <div style={{ fontSize: 10, color: new Date(task.dueDate) < new Date() ? '#ef4444' : 'var(--text-muted)', marginTop: 6 }}>📅 {new Date(task.dueDate).toLocaleDateString('fr-FR')}</div>}
@@ -179,7 +181,7 @@ export default function TasksPage() {
                     <div className="table-actions">
                       {task.status !== 'DONE' && <button className="icon-btn" title="Terminer" onClick={() => quickStatus(task, 'DONE')}><Check size={13} /></button>}
                       <button className="icon-btn" onClick={() => { setForm({ projectId: task.project?.id || '', title: task.title, description: task.description || '', status: task.status, priority: task.priority, dueDate: task.dueDate?.split('T')[0] || '' }); setModal({ type: 'edit', task }); }}><Edit2 size={13} /></button>
-                      <button className="icon-btn icon-btn--danger" onClick={() => { if (window.confirm('Supprimer ?')) deleteMutation.mutate(task.id); }}><Trash2 size={13} /></button>
+                      <button className="icon-btn icon-btn--danger" onClick={async () => { const ok = await confirm({ title: 'Supprimer cette tâche ?', confirmLabel: 'Supprimer', variant: 'danger' }); if (ok) deleteMutation.mutate(task.id); }}><Trash2 size={13} /></button>
                     </div>
                   </td>
                 </tr>
@@ -227,6 +229,7 @@ export default function TasksPage() {
           </form>
         </Modal>
       )}
+      {confirmModal}
     </div>
   );
 }

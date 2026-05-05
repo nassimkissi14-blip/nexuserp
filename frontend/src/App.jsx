@@ -6,6 +6,7 @@ import { useAuthStore } from './store/index.js';
 import { useSocket } from './hooks/useSocket.js';
 
 import MainLayout from './components/layout/MainLayout.jsx';
+import ErrorBoundary from './components/ErrorBoundary.jsx';
 import ProtectedRoute from './components/auth/ProtectedRoute.jsx';
 import RoleGuard from './components/auth/RoleGuard.jsx';
 import ModuleGuard from './components/auth/ModuleGuard.jsx';
@@ -19,6 +20,7 @@ import WelcomePage from './pages/WelcomePage.jsx';
 
 // Core
 import DashboardPage from './pages/DashboardPage.jsx';
+import DeptDashboardPage from './pages/DeptDashboardPage.jsx';
 
 // RH
 import EmployeesPage from './pages/rh/EmployeesPage.jsx';
@@ -221,6 +223,9 @@ export default function App() {
               {/* Dashboard */}
               <Route path="/dashboard" element={<DashboardPage />} />
 
+              {/* Dept stats — accessible by route param */}
+              <Route path="/stats/:dept" element={<DeptDashboardPage />} />
+
               {/* ── RH ── */}
               <Route element={<ModuleGuard slug="rh" />}>
                 <Route path="/rh/pending" element={<PendingApprovalsPage />} />
@@ -263,7 +268,6 @@ export default function App() {
               <Route element={<ModuleGuard slug="purchases" />}>
                 <Route path="/purchases/suppliers" element={<SuppliersPage />} />
                 <Route path="/purchases/orders" element={<PurchasesPage />} />
-                <Route path="/purchases/receptions" element={<PurchasesPage />} />
               </Route>
 
               {/* ── STOCK ── */}
@@ -348,15 +352,15 @@ export default function App() {
               <Route path="/ai/analytics" element={<AIAnalyticsPage />} />
               <Route path="/ai/reports" element={<AIReportsPage />} />
 
-              {/* ── ADMIN — access controlled by RoleGuard only ── */}
-              <Route path="/admin/modules"   element={<RoleGuard minRole="DIRECTOR"><ModulesAdminPage /></RoleGuard>} />
-              <Route path="/admin/users"     element={<RoleGuard minRole="ADMIN"><UsersPage /></RoleGuard>} />
-              <Route path="/admin/settings"  element={<RoleGuard minRole="ADMIN"><SettingsPage /></RoleGuard>} />
-              <Route path="/admin/workflows" element={<RoleGuard minRole="ADMIN"><WorkflowPage /></RoleGuard>} />
+              {/* ── ADMIN — accès restreint selon le rôle ── */}
+              <Route path="/admin/modules"   element={<RoleGuard minRole="MANAGER"><ModulesAdminPage /></RoleGuard>} />
+              <Route path="/admin/users"     element={<RoleGuard minRole="DIRECTOR"><UsersPage /></RoleGuard>} />
               <Route path="/admin/backup"    element={<RoleGuard minRole="SUPER_ADMIN"><BackupPage /></RoleGuard>} />
-              <Route path="/admin/languages" element={<RoleGuard minRole="ADMIN"><LanguagePage /></RoleGuard>} />
-              <Route path="/admin/logs"      element={<RoleGuard minRole="DIRECTOR"><ActivityLogsPage /></RoleGuard>} />
-              <Route path="/admin/audit"     element={<RoleGuard minRole="DIRECTOR"><ActivityLogsPage /></RoleGuard>} />
+              <Route path="/admin/languages" element={<RoleGuard minRole="DIRECTOR"><LanguagePage /></RoleGuard>} />
+
+              {/* ── MON COMPTE — accessibles à tous les employés ── */}
+              <Route path="/admin/settings"  element={<SettingsPage />} />
+              <Route path="/admin/workflows" element={<WorkflowPage />} />
 
               {/* ── OUTILS (libres) ── */}
               <Route path="/calendar" element={<SharedCalendarPage />} />

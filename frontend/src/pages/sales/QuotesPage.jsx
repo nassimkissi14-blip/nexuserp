@@ -4,6 +4,7 @@ import { Search, Plus, Eye, Send, Check, Trash2, X, Mail } from 'lucide-react';
 import { quotesAPI, customersAPI, productsAPI } from '../../api/client.js';
 import apiClient from '../../api/client.js';
 import toast from 'react-hot-toast';
+import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 
 const STATUS = {
   DRAFT:    { label: 'Brouillon', color: '#64748b' },
@@ -67,6 +68,7 @@ const emptyForm = () => ({
 
 export default function QuotesPage() {
   const queryClient = useQueryClient();
+  const { confirm, modal: confirmModal } = useConfirm();
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [modal, setModal] = useState(null);
@@ -219,12 +221,12 @@ export default function QuotesPage() {
                       )}
                       {['DRAFT', 'SENT'].includes(q.status) && (
                         <button className="icon-btn" title="Convertir en facture" style={{ color: '#10b981' }}
-                          onClick={() => { if (window.confirm(`Accepter le devis ${q.reference} et générer une facture automatiquement ?`)) convertMutation.mutate(q.id); }}>
+                          onClick={async () => { const ok = await confirm({ title: `Convertir ${q.reference} ?`, message: 'Une facture sera générée automatiquement.', confirmLabel: 'Convertir', variant: 'info' }); if (ok) convertMutation.mutate(q.id); }}>
                           <Check size={13} />
                         </button>
                       )}
                       {['DRAFT', 'SENT'].includes(q.status) && (
-                        <button className="icon-btn icon-btn--danger" title="Supprimer" onClick={() => { if (window.confirm('Supprimer ?')) deleteMutation.mutate(q.id); }}><Trash2 size={13} /></button>
+                        <button className="icon-btn icon-btn--danger" title="Supprimer" onClick={async () => { const ok = await confirm({ title: 'Supprimer ce devis ?', confirmLabel: 'Supprimer', variant: 'danger' }); if (ok) deleteMutation.mutate(q.id); }}><Trash2 size={13} /></button>
                       )}
                     </div>
                   </td>
@@ -353,6 +355,7 @@ export default function QuotesPage() {
           </form>
         </Modal>
       )}
+      {confirmModal}
     </div>
   );
 }

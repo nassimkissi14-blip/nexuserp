@@ -17,9 +17,9 @@ router.get('/', authenticate, async (req, res, next) => {
     const { page = 1, limit = 20, search, status } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
 
-    // Auto-mark overdue invoices
+    // Auto-mark overdue invoices (DRAFT and SENT with past due date)
     await prisma.invoice.updateMany({
-      where: { companyId: req.companyId, status: 'SENT', dueDate: { lt: new Date() } },
+      where: { companyId: req.companyId, status: { in: ['DRAFT', 'SENT'] }, dueDate: { lt: new Date() } },
       data: { status: 'OVERDUE' },
     });
 
@@ -93,6 +93,7 @@ router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'DIRECTOR', 'MA
     }
 
     const tax = sub * (Number(taxRate) / 100);
+    const initialStatus = new Date(dueDate) < new Date() ? 'OVERDUE' : 'DRAFT';
 
     const invoice = await prisma.invoice.create({
       data: {
@@ -100,7 +101,7 @@ router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'DIRECTOR', 'MA
         customerId,
         orderId: orderId || null,
         reference,
-        status: 'DRAFT',
+        status: initialStatus,
         subtotal: sub,
         taxRate: Number(taxRate),
         taxAmount: tax,

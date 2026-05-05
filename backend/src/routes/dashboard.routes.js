@@ -78,31 +78,44 @@ router.get('/kpis', authenticate, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+/* ─── French translation helpers ──────────────────────────────── */
+const FR_CONTRACT  = { CDI: 'CDI', CDD: 'CDD', INTERIM: 'Intérim', STAGE: 'Stage', FREELANCE: 'Freelance' };
+const FR_LEAVE     = { ANNUAL: 'Congé annuel', SICK: 'Maladie', MATERNITY: 'Maternité', PATERNITY: 'Paternité', UNPAID: 'Sans solde', OTHER: 'Autre' };
+const FR_PRIORITY  = { CRITICAL: 'Critique', HIGH: 'Haute', MEDIUM: 'Moyenne', LOW: 'Basse', URGENT: 'Urgent' };
+const FR_EQUIP_TYPE = { MACHINE: 'Machine', VEHICLE: 'Véhicule', TOOL: 'Outil', INFRASTRUCTURE: 'Infrastructure', COMPUTER: 'Informatique', ELECTRICAL: 'Électrique', OTHER: 'Autre' };
+const FR_REQ_TYPE  = { BREAKDOWN: 'Panne', PREVENTIVE: 'Préventif', CORRECTIVE: 'Correctif', INSPECTION: 'Inspection', IMPROVEMENT: 'Amélioration', OTHER: 'Autre' };
+const FR_ROLE      = { SUPER_ADMIN: 'Super Admin', ADMIN: 'Admin', DIRECTOR: 'Directeur', MANAGER: 'Manager', OPERATOR: 'Opérateur' };
+const FR_MVT_TYPE  = { IN: 'Entrée', OUT: 'Sortie', ADJUSTMENT: 'Ajustement', TRANSFER: 'Transfert', RETURN: 'Retour' };
+const FR_PRIORITY_PROJ = { CRITICAL: 'Critique', HIGH: 'Haute', MEDIUM: 'Moyenne', LOW: 'Basse' };
+const fr = (map, val) => map[val] || val;
+
 /* ─── Dept-specific stats ──────────────────────────────────────── */
 router.get('/dept-stats', authenticate, async (req, res, next) => {
   try {
     const { companyId } = req;
-    const raw = (req.user.department || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+    // Allow admin/director to query any dept via ?dept= param
+    const deptParam = req.query.dept ? req.query.dept.toLowerCase().trim() : null;
+    const raw = deptParam || (req.user.department || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
     const now = new Date();
     const som = new Date(now.getFullYear(), now.getMonth(), 1);
 
     // ── RH ──────────────────────────────────────────────────────────
     if (['rh', 'ressources humaines'].includes(raw)) {
-      const [totalEmp, activeEmp, onLeave, pendingLeaves, newHires, recentLeaves, recentPayrolls] = await Promise.all([
+      const [totalEmp, activeEmp, onLeave, pendingLeaves, newHires, allEmployees, recentLeaves] = await Promise.all([
         prisma.employee.count({ where: { companyId } }),
         prisma.employee.count({ where: { companyId, status: 'ACTIVE' } }),
         prisma.employee.count({ where: { companyId, status: 'ON_LEAVE' } }),
         prisma.leaveRequest.count({ where: { employee: { companyId }, status: 'PENDING' } }),
         prisma.employee.count({ where: { companyId, hireDate: { gte: som } } }),
+        prisma.employee.findMany({
+          where: { companyId },
+          orderBy: { lastName: 'asc' },
+          select: { id: true, firstName: true, lastName: true, position: true, department: true, hireDate: true, contractType: true, status: true },
+        }),
         prisma.leaveRequest.findMany({
           where: { employee: { companyId } },
           orderBy: { createdAt: 'desc' }, take: 12,
           include: { employee: { select: { firstName: true, lastName: true, department: true } } },
-        }),
-        prisma.payroll.findMany({
-          where: { companyId },
-          orderBy: { createdAt: 'desc' }, take: 8,
-          include: { employee: { select: { firstName: true, lastName: true } } },
         }),
       ]);
       return res.json({ success: true, data: {
@@ -114,26 +127,27 @@ router.get('/dept-stats', authenticate, async (req, res, next) => {
           { label: 'Congés à valider', value: pendingLeaves, icon: '📋', color: '#ef4444', alert: pendingLeaves > 0 },
           { label: 'Embauches ce mois', value: newHires, icon: '🆕', color: '#8b5cf6' },
         ],
-        title: 'Demandes de congé',
-        headers: ['Employé', 'Département', 'Type', 'Période', 'Jours', 'Statut'],
-        rows: recentLeaves.map(l => ({
+        title: 'Employés',
+        headers: ['Nom', 'Poste', 'Département', 'Contrat', 'Embauche', 'Statut'],
+        rows: allEmployees.map(e => ({
+          id: e.id,
+          col1: `${e.firstName} ${e.lastName}`,
+          col2: e.position,
+          col3: e.department || '—',
+          col4: fr(FR_CONTRACT, e.contractType),
+          col5: new Date(e.hireDate).toLocaleDateString('fr-FR'),
+          status: e.status,
+        })),
+        title2: 'Demandes de congé',
+        headers2: ['Employé', 'Département', 'Type', 'Période', 'Jours', 'Statut'],
+        rows2: recentLeaves.map(l => ({
           id: l.id,
           col1: `${l.employee.firstName} ${l.employee.lastName}`,
           col2: l.employee.department || '—',
-          col3: l.type,
+          col3: fr(FR_LEAVE, l.type),
           col4: `${new Date(l.startDate).toLocaleDateString('fr-FR')} → ${new Date(l.endDate).toLocaleDateString('fr-FR')}`,
           col5: l.days + ' j',
           status: l.status,
-        })),
-        title2: 'Derniers bulletins de paie',
-        headers2: ['Employé', 'Période', 'Salaire brut', 'Net', 'Statut'],
-        rows2: recentPayrolls.map(p => ({
-          id: p.id,
-          col1: `${p.employee.firstName} ${p.employee.lastName}`,
-          col2: `${String(p.month).padStart(2,'0')}/${p.year}`,
-          col3: p.baseSalary.toLocaleString('fr-DZ') + ' DA',
-          col4: p.netSalary.toLocaleString('fr-DZ') + ' DA',
-          status: p.paidAt ? 'PAID' : 'PENDING',
         })),
       }});
     }
@@ -264,49 +278,48 @@ router.get('/dept-stats', authenticate, async (req, res, next) => {
 
     // ── MAINTENANCE ──────────────────────────────────────────────────
     if (raw === 'maintenance') {
-      const [totalEquip, downEquip, openReq, openOT, recentReq, recentOT] = await Promise.all([
+      const [totalEquip, downEquip, openReq, openOT, allEquipment, recentReq] = await Promise.all([
         prisma.equipment.count({ where: { companyId } }),
-        prisma.equipment.count({ where: { companyId, status: 'BREAKDOWN' } }),
+        prisma.equipment.count({ where: { companyId, status: { in: ['DOWN', 'MAINTENANCE'] } } }),
         prisma.maintenanceRequest.count({ where: { companyId, status: { in: ['OPEN', 'IN_PROGRESS'] } } }),
         prisma.maintenanceOrder.count({ where: { companyId, status: { in: ['PLANNED', 'IN_PROGRESS'] } } }),
+        prisma.equipment.findMany({
+          where: { companyId }, orderBy: { name: 'asc' },
+        }),
         prisma.maintenanceRequest.findMany({
           where: { companyId }, orderBy: { createdAt: 'desc' }, take: 10,
           include: { equipment: { select: { name: true, code: true } } },
-        }),
-        prisma.maintenanceOrder.findMany({
-          where: { companyId }, orderBy: { createdAt: 'desc' }, take: 8,
-          include: { equipment: { select: { name: true } } },
         }),
       ]);
       return res.json({ success: true, data: {
         dept: 'maintenance',
         kpis: [
           { label: 'Équipements', value: totalEquip, icon: '⚙️', color: '#6366f1' },
-          { label: 'En panne', value: downEquip, icon: '🔴', color: '#ef4444', alert: downEquip > 0 },
+          { label: 'En panne / maintenance', value: downEquip, icon: '🔴', color: '#ef4444', alert: downEquip > 0 },
           { label: 'Demandes ouvertes', value: openReq, icon: '📋', color: '#f59e0b' },
           { label: 'OT en cours', value: openOT, icon: '🔧', color: '#8b5cf6' },
         ],
-        title: 'Demandes de maintenance',
-        headers: ['Équipement', 'Titre', 'Type', 'Priorité', 'Signalé le', 'Statut'],
-        rows: recentReq.map(r => ({
+        title: 'Équipements',
+        headers: ['Code', 'Nom', 'Type', 'Emplacement', 'Dernière maintenance', 'Statut'],
+        rows: allEquipment.map(e => ({
+          id: e.id,
+          col1: e.code,
+          col2: e.name,
+          col3: fr(FR_EQUIP_TYPE, e.type) || '—',
+          col4: e.location || '—',
+          col5: e.lastMaintenance ? new Date(e.lastMaintenance).toLocaleDateString('fr-FR') : '—',
+          status: e.status,
+        })),
+        title2: 'Demandes de maintenance',
+        headers2: ['Équipement', 'Titre', 'Type', 'Priorité', 'Signalé le', 'Statut'],
+        rows2: recentReq.map(r => ({
           id: r.id,
           col1: r.equipment?.name || '—',
           col2: r.title,
-          col3: r.type,
-          col4: r.priority,
+          col3: fr(FR_REQ_TYPE, r.type),
+          col4: fr(FR_PRIORITY, r.priority),
           col5: new Date(r.reportedAt).toLocaleDateString('fr-FR'),
           status: r.status,
-        })),
-        title2: 'Ordres de travail',
-        headers2: ['Équipement', 'Titre', 'Type', 'Heures est.', 'Date planifiée', 'Statut'],
-        rows2: recentOT.map(o => ({
-          id: o.id,
-          col1: o.equipment?.name || '—',
-          col2: o.title,
-          col3: o.type,
-          col4: o.estimatedHours + 'h',
-          col5: o.plannedDate ? new Date(o.plannedDate).toLocaleDateString('fr-FR') : '—',
-          status: o.status,
         })),
       }});
     }
@@ -314,7 +327,7 @@ router.get('/dept-stats', authenticate, async (req, res, next) => {
     // ── STOCK / ACHATS / LOGISTIQUE ──────────────────────────────────
     if (['stock', 'logistique', 'achats', 'stock / logistique'].includes(raw)) {
       const [products, movements] = await Promise.all([
-        prisma.product.findMany({ where: { companyId, isActive: true }, select: { name: true, sku: true, stockQty: true, minStockQty: true, buyPrice: true } }),
+        prisma.product.findMany({ where: { companyId, isActive: true }, select: { name: true, sku: true, stockQty: true, minStockQty: true, buyPrice: true }, orderBy: { name: 'asc' } }),
         prisma.stockMovement.findMany({
           where: { companyId }, orderBy: { createdAt: 'desc' }, take: 12,
           include: { product: { select: { name: true } } },
@@ -324,6 +337,16 @@ router.get('/dept-stats', authenticate, async (req, res, next) => {
       const lowStock = products.filter(p => p.stockQty <= p.minStockQty);
       const inMvt = movements.filter(m => m.type === 'IN').length;
       const outMvt = movements.filter(m => m.type === 'OUT').length;
+      // Compute per-product status for donut (total = all active products = KPI)
+      const productRows = products.map(p => ({
+        id: p.sku,
+        col1: p.name,
+        col2: p.sku,
+        col3: String(p.stockQty),
+        col4: String(p.minStockQty),
+        col5: (p.stockQty * p.buyPrice).toLocaleString('fr-DZ') + ' DA',
+        status: p.stockQty === 0 ? 'RUPTURE' : p.stockQty <= p.minStockQty ? 'LOW' : 'ACTIVE',
+      }));
       return res.json({ success: true, data: {
         dept: 'stock',
         kpis: [
@@ -333,23 +356,15 @@ router.get('/dept-stats', authenticate, async (req, res, next) => {
           { label: 'Entrées (total)', value: inMvt, icon: '📥', color: '#8b5cf6' },
           { label: 'Sorties (total)', value: outMvt, icon: '📤', color: '#f59e0b' },
         ],
-        title: 'Produits en rupture / stock bas',
+        title: 'Produits',
         headers: ['Produit', 'SKU', 'Stock actuel', 'Stock min', 'Valeur', 'Statut'],
-        rows: lowStock.slice(0, 10).map(p => ({
-          id: p.sku,
-          col1: p.name,
-          col2: p.sku,
-          col3: String(p.stockQty),
-          col4: String(p.minStockQty),
-          col5: (p.stockQty * p.buyPrice).toLocaleString('fr-DZ') + ' DA',
-          status: p.stockQty === 0 ? 'RUPTURE' : 'LOW',
-        })),
+        rows: productRows,
         title2: 'Derniers mouvements de stock',
         headers2: ['Produit', 'Type', 'Quantité', 'Référence', 'Date', ''],
         rows2: movements.map(m => ({
           id: m.id,
           col1: m.product?.name || '—',
-          col2: m.type,
+          col2: fr(FR_MVT_TYPE, m.type),
           col3: String(m.quantity),
           col4: m.reference || '—',
           col5: new Date(m.createdAt).toLocaleDateString('fr-FR'),
@@ -380,7 +395,7 @@ router.get('/dept-stats', authenticate, async (req, res, next) => {
         rows: recentProjects.map(p => ({
           id: p.id,
           col1: p.name,
-          col2: p.priority,
+          col2: fr(FR_PRIORITY_PROJ, p.priority),
           col3: p.progress + '%',
           col4: p.endDate ? new Date(p.endDate).toLocaleDateString('fr-FR') : '—',
           col5: p.budget ? p.budget.toLocaleString('fr-DZ') + ' DA' : '—',
@@ -413,7 +428,7 @@ router.get('/dept-stats', authenticate, async (req, res, next) => {
           id: u.id,
           col1: `${u.firstName} ${u.lastName}`,
           col2: u.email,
-          col3: u.role,
+          col3: fr(FR_ROLE, u.role),
           col4: u.department || '—',
           col5: new Date(u.createdAt).toLocaleDateString('fr-FR'),
           status: u.isActive ? 'ACTIVE' : 'INACTIVE',

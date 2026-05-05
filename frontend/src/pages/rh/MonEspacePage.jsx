@@ -66,13 +66,28 @@ export default function MonEspacePage() {
   const pendingLeaves  = leaves.filter(l => l.status === 'PENDING').length;
   const lastPayroll    = payrolls[0];
 
-  const TAB_STYLE = (active) => ({
-    padding: '8px 18px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: active ? 700 : 500,
-    background: active ? 'rgba(99,102,241,0.12)' : 'transparent',
-    color: active ? '#818cf8' : 'var(--text-muted)',
-    border: active ? '1px solid rgba(99,102,241,0.25)' : '1px solid transparent',
-    transition: 'all .15s',
-  });
+  const calcAge = (birthDate) => {
+    if (!birthDate) return null;
+    const today = new Date();
+    const birth = new Date(birthDate);
+    let age = today.getFullYear() - birth.getFullYear();
+    if (today.getMonth() < birth.getMonth() || (today.getMonth() === birth.getMonth() && today.getDate() < birth.getDate())) age--;
+    return age;
+  };
+
+  const calcSeniority = (hireDate) => {
+    if (!hireDate) return null;
+    const today = new Date();
+    const hire = new Date(hireDate);
+    let years = today.getFullYear() - hire.getFullYear();
+    let months = today.getMonth() - hire.getMonth();
+    if (months < 0) { years--; months += 12; }
+    return years > 0 ? `${years} an${years > 1 ? 's' : ''} ${months > 0 ? months + ' mois' : ''}` : `${months} mois`;
+  };
+
+  const age = calcAge(employee?.birthDate);
+  const seniority = calcSeniority(employee?.hireDate);
+
 
   return (
     <div className="page">
@@ -90,25 +105,24 @@ export default function MonEspacePage() {
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:16 }}>
         {[
           { icon:'💼', label:'Poste', value: employee?.position || '—', color:'#6366f1' },
-          { icon:'📅', label:'Ancienneté', value: employee?.hireDate ? `Depuis ${fmtDate(employee.hireDate)}` : '—', color:'#8b5cf6' },
+          { icon:'📅', label:'Ancienneté', value: seniority || (employee?.hireDate ? fmtDate(employee.hireDate) : '—'), color:'#8b5cf6' },
           { icon:'🏖️', label:'Congés pris', value: `${approvedLeaves} jour(s)`, color:'#10b981' },
           { icon:'⏳', label:'En attente', value: `${pendingLeaves} demande(s)`, color:'#f59e0b' },
           { icon:'💰', label:'Dernier salaire', value: lastPayroll ? fmtDZD(lastPayroll.netSalary) : '—', color:'#06b6d4' },
           { icon:'📄', label:'Contrat', value: employee?.contractType || '—', color:'#a855f7' },
         ].map((k, i) => (
-          <div key={i} style={{ background:'var(--bg-card)', border:'1px solid var(--border)', borderRadius:'var(--radius-lg)', padding:'16px 18px', position:'relative', overflow:'hidden' }}>
-            <div style={{ position:'absolute', top:0, left:0, right:0, height:3, background:k.color }} />
-            <div style={{ fontSize:22, marginBottom:8 }}>{k.icon}</div>
-            <div style={{ fontSize:11, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:.7, marginBottom:4 }}>{k.label}</div>
+          <div key={i} style={{ background:'var(--bg-card)', border:'1px solid var(--border)', borderTop:`3px solid ${k.color}`, borderRadius:'var(--radius-lg)', padding:'16px 18px' }}>
+            <div style={{ fontSize:22, marginBottom:10 }}>{k.icon}</div>
+            <div style={{ fontSize:11, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:.7, marginBottom:4, fontWeight:600 }}>{k.label}</div>
             <div style={{ fontSize:15, fontWeight:700, color:'var(--text-primary)' }}>{k.value}</div>
           </div>
         ))}
       </div>
 
       {/* TABS */}
-      <div style={{ display:'flex', gap:8, borderBottom:'1px solid var(--border)', paddingBottom:0 }}>
+      <div className="tabs-bar">
         {[['overview','Vue d\'ensemble'],['leaves','Mes congés'],['payroll','Mes fiches de paie']].map(([key,label]) => (
-          <button key={key} style={TAB_STYLE(tab===key)} onClick={() => setTab(key)}>{label}</button>
+          <button key={key} className={`tab-btn${tab===key?' active':''}`} onClick={() => setTab(key)}>{label}</button>
         ))}
       </div>
 
@@ -119,11 +133,16 @@ export default function MonEspacePage() {
           <div style={{ background:'var(--bg-card)', border:'1px solid var(--border)', borderRadius:'var(--radius-lg)', padding:20 }}>
             <div style={{ fontWeight:700, fontSize:14, marginBottom:16, display:'flex', alignItems:'center', gap:8 }}><User size={15} color="#6366f1"/> Mes informations</div>
             {[
-              ['Email',      employee?.email || user?.email || '—'],
-              ['Téléphone',  employee?.phone || '—'],
-              ['Département',employee?.department || user?.department || '—'],
-              ['Adresse',    employee?.address || '—'],
+              ['Email',       employee?.email || user?.email || '—'],
+              ['Téléphone',   employee?.phone || '—'],
+              ['Département', employee?.department || user?.department || '—'],
+              ['Adresse',     employee?.address || '—'],
               ['Date naiss.', employee?.birthDate ? fmtDate(employee.birthDate) : '—'],
+              ['Âge',         age ? `${age} ans` : '—'],
+              ['Date embauche', employee?.hireDate ? fmtDate(employee.hireDate) : '—'],
+              ['Ancienneté',  seniority || '—'],
+              ['Type contrat',employee?.contractType || '—'],
+              ['Statut',      employee?.status || '—'],
             ].map(([label, val]) => (
               <div key={label} style={{ display:'flex', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid var(--border)', fontSize:13 }}>
                 <span style={{ color:'var(--text-muted)' }}>{label}</span>
@@ -145,8 +164,8 @@ export default function MonEspacePage() {
                     <div style={{ fontWeight:600 }}>{LEAVE_TYPE_LABEL[l.type] || l.type}</div>
                     <div style={{ fontSize:11, color:'var(--text-muted)' }}>{fmtDate(l.startDate)} → {fmtDate(l.endDate)}</div>
                   </div>
-                  <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'3px 9px', borderRadius:20, fontSize:11, fontWeight:600, color:s.color, background:s.bg }}>
-                    {s.icon} {s.label}
+                  <span className={`badge badge--${l.status === 'APPROVED' ? 'green' : l.status === 'REJECTED' ? 'red' : 'orange'} badge--dot`}>
+                    {s.label}
                   </span>
                 </div>
               );
@@ -206,7 +225,7 @@ export default function MonEspacePage() {
                   <div>
                     <div style={{ fontWeight:700, fontSize:15 }}>{MONTHS[p.month-1]} {p.year}</div>
                     <div style={{ fontSize:12, color:'var(--text-muted)', marginTop:2 }}>
-                      Brut : {fmtDZD(p.grossSalary)} · Cotisations : {fmtDZD(p.socialContributions)}
+                      Brut : {fmtDZD((p.baseSalary || 0) + (p.bonus || 0))} · CNAS 9% : {fmtDZD((p.baseSalary || 0) * 0.09)}
                     </div>
                   </div>
                 </div>

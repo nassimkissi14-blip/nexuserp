@@ -2,14 +2,14 @@ import { useState, useEffect, useCallback } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore, useNotificationsStore, useModulesStore } from '../../store/index.js';
-import { useModulesConfigStore } from '../../store/modulesConfig.js';
 import { useTheme } from '../../context/ThemeContext.jsx';
 import {
   Bell, LogOut, ChevronRight,
-  Menu, X, Moon, Sun, Bot, Search,
+  Menu, X, Moon, Sun, Bot, Search, Settings,
 } from 'lucide-react';
 import CommandPalette from '../CommandPalette.jsx';
 import SimulationPanel from '../SimulationPanel.jsx';
+import ErrorBoundary from '../ErrorBoundary.jsx';
 
 // Department → allowed module slugs (null = all modules)
 const DEPT_MODULE_ACCESS = {
@@ -32,20 +32,36 @@ const DEPT_MODULE_ACCESS = {
 const normDept = (dept) =>
   (dept || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
 
+// Modules that have a dedicated stats page (/stats/:dept)
+const MODULE_STATS = {
+  rh:          'rh',
+  crm:         'crm',
+  sales:       'crm',
+  finance:     'finance',
+  production:  'production',
+  maintenance: 'maintenance',
+  stock:       'stock',
+  projects:    'projets',
+  purchases:   'achats',
+  logistics:   'logistique',
+};
+
 const TOOL_LINKS = [
-  { icon: '📅', label: 'Calendrier',           route: '/calendar'               },
-  { icon: '📱', label: 'QR Manager',           route: '/qr-manager'             },
-  { icon: '🗂️', label: 'QR par module',       route: '/qr-module-manager'      },
-  { icon: '📤', label: 'Exports & Rapports',   route: '/reports/export'         },
+  { icon: '📱', label: 'QR Manager',              route: '/qr-manager'          },
+  { icon: '📤', label: 'Exports & Rapports',      route: '/reports/export'      },
   { icon: '🏭', label: 'Simulation industrielle', route: '/simulation/dashboard' },
 ];
 
+// Accessible à tous les employés connectés
+const USER_LINKS = [
+  { icon: '👤', label: 'Mon profil',  route: '/admin/settings'  },
+  { icon: '🔀', label: 'Workflow',    route: '/admin/workflows' },
+];
+
+// Réservé aux directeurs et administrateurs
 const ADMIN_LINKS = [
-  { icon: '⚙️', label: 'Modules',      route: '/admin/modules'    },
-  { icon: '👤', label: 'Utilisateurs', route: '/admin/users'      },
-  { icon: '🔧', label: 'Paramètres',   route: '/admin/settings'   },
-  { icon: '🔀', label: 'Workflow',     route: '/admin/workflows'  },
-  { icon: '📋', label: 'Logs',         route: '/admin/logs'       },
+  { icon: '⚙️', label: 'Modules',      route: '/admin/modules' },
+  { icon: '👥', label: 'Utilisateurs', route: '/admin/users'   },
 ];
 
 // Framer Motion variants ──────────────────────────────────────────────────────
@@ -86,7 +102,7 @@ function PageOutlet() {
         initial="initial"
         animate="enter"
         exit="exit"
-        style={{ flex: 1 }}
+        style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}
       >
         <Outlet />
       </motion.div>
@@ -104,14 +120,15 @@ export default function MainLayout() {
   const { darkMode, toggle: toggleDarkMode } = useTheme();
   const { user, logout } = useAuthStore();
   const { notifications, unreadCount, fetchNotifications, markAllRead } = useNotificationsStore();
-  const { getVisible } = useModulesConfigStore();
-  const { fetchModules, isModuleEnabled } = useModulesStore();
+  const { modules: dbModules, fetchModules } = useModulesStore();
 
-  // Expand all visible modules on first load
+  // Expand all modules on first load
   useEffect(() => {
-    const expanded = getVisible().reduce((acc, m) => ({ ...acc, [m.slug]: true }), {});
-    setExpandedModules(expanded);
-  }, []);
+    if (dbModules.length > 0) {
+      const expanded = dbModules.reduce((acc, m) => ({ ...acc, [m.slug]: true }), {});
+      setExpandedModules(expanded);
+    }
+  }, [dbModules.length]);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -137,18 +154,23 @@ export default function MainLayout() {
     navigate('/');
   };
 
-  // Compute allowed slugs based on department (SUPER_ADMIN and Direction see everything)
+  // Compute allowed slugs based on department
   const dept = normDept(user?.department);
   const isSuperOrDir = user?.role === 'SUPER_ADMIN' || dept === 'direction' || dept === 'administration';
   const allowedSlugs = isSuperOrDir ? null : (DEPT_MODULE_ACCESS[dept] ?? null);
 
-  // Sidebar modules filtered by company-enabled + user department
-  const displayModules = getVisible()
-    .filter(m => isModuleEnabled(m.slug))
-    .filter(m => !allowedSlugs || allowedSlugs.includes(m.slug));
+  // Sidebar modules: fully from DB, filtered by enabled + department + exclude admin slug
+  const displayModules = dbModules
+    .filter(m => m.enabled && m.slug !== 'admin')
+    .filter(m => !allowedSlugs || allowedSlugs.includes(m.slug))
+    .sort((a, b) => (a.sortOrder ?? 99) - (b.sortOrder ?? 99));
 
-  // Admin system links only for Direction + SUPER_ADMIN
+  // Admin system links for DIRECTOR and above
   const showAdminLinks = isSuperOrDir;
+
+  // Can a user configure modules? MANAGER+ yes
+  const ROLE_ORDER = { OPERATOR: 0, MANAGER: 1, DIRECTOR: 2, ADMIN: 3, SUPER_ADMIN: 4 };
+  const canConfigModules = (ROLE_ORDER[user?.role] ?? 0) >= ROLE_ORDER.MANAGER;
 
   // Theme-aware colors — aligned with premium CSS variables
   const C = {
@@ -332,6 +354,15 @@ export default function MainLayout() {
                       exit="hidden"
                       style={{ overflow: 'hidden' }}
                     >
+                      {/* Stats link for modules that have dept stats */}
+                      {MODULE_STATS[mod.slug] && (
+                        <motion.div variants={subItemVariants}>
+                          <NavLink to={`/stats/${MODULE_STATS[mod.slug]}`} style={({ isActive }) => subBase(isActive)}>
+                            <span style={{ color: C.textMuted, fontSize: 14, marginRight: 2 }}>›</span>
+                            <span>📊 Statistiques</span>
+                          </NavLink>
+                        </motion.div>
+                      )}
                       {subLinks.map((link, i) => (
                         <motion.div key={i} variants={subItemVariants}>
                           <NavLink to={link.route} style={({ isActive }) => subBase(isActive)}>
@@ -340,6 +371,24 @@ export default function MainLayout() {
                           </NavLink>
                         </motion.div>
                       ))}
+                      {/* Config link — visible to MANAGER+ for their own module */}
+                      {canConfigModules && (
+                        <motion.div variants={subItemVariants}>
+                          <NavLink
+                            to={`/admin/modules?slug=${mod.slug}`}
+                            style={({ isActive }) => ({
+                              ...subBase(isActive),
+                              color: isActive ? '#a5b4fc' : '#64748b',
+                              borderTop: '1px solid rgba(255,255,255,0.04)',
+                              marginTop: 2,
+                              paddingTop: 6,
+                            })}
+                          >
+                            <Settings size={11} style={{ color: 'inherit', flexShrink: 0, marginRight: 4 }} />
+                            <span style={{ fontSize: 12 }}>Configuration</span>
+                          </NavLink>
+                        </motion.div>
+                      )}
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -358,9 +407,25 @@ export default function MainLayout() {
             </NavLink>
           ))}
 
+          {/* Mon compte — visible par tous */}
+          <SectionLabel label="Mon compte" />
+          {USER_LINKS.map(link => (
+            <NavLink key={link.route} to={link.route} style={({ isActive }) => navItemBase(isActive)}>
+              {({ isActive }) => (
+                <motion.div whileHover={{ x: isActive ? 0 : 2 }} transition={{ type: 'spring', stiffness: 400, damping: 25 }} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
+                  <span style={{ fontSize: 14, flexShrink: 0 }}>{link.icon}</span>
+                  <AnimatePresence>
+                    {sidebarOpen && <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} style={{ fontWeight: 500 }}>{link.label}</motion.span>}
+                  </AnimatePresence>
+                </motion.div>
+              )}
+            </NavLink>
+          ))}
+
+          {/* Administration — directeurs et admins uniquement */}
           {showAdminLinks && (
             <>
-              <SectionLabel label="Système" />
+              <SectionLabel label="Administration" />
               {ADMIN_LINKS.map(link => (
                 <NavLink key={link.route} to={link.route} style={({ isActive }) => navItemBase(isActive)}>
                   {({ isActive }) => (
@@ -591,9 +656,12 @@ export default function MainLayout() {
         </header>
 
         {/* PAGE CONTENT with transition */}
-        <main style={{ flex: 1, overflowY: 'auto', background: C.bg }}>
-          <div style={{ padding: 28 }}>
-            <PageOutlet />
+        {/* Messaging needs full-height, no padding — all other pages use padding: 28 */}
+        <main style={{ flex: 1, overflowY: location.pathname.includes('/messaging') ? 'hidden' : 'auto', background: C.bg, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: location.pathname.includes('/messaging') ? 0 : 28, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <ErrorBoundary>
+              <PageOutlet />
+            </ErrorBoundary>
           </div>
         </main>
       </div>

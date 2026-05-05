@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customersAPI } from '../../api/client.js';
 import { Plus, Phone, Mail, ArrowRight, Edit2, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 
 const STAGES = [
   { key: 'LEAD',     label: 'Leads',     color: '#f59e0b', icon: '🎯', next: 'PROSPECT', nextLabel: '→ Qualifier' },
@@ -24,6 +25,7 @@ const Modal = ({ title, onClose, children }) => (
 
 export default function PipelinePage() {
   const queryClient = useQueryClient();
+  const { confirm, modal: confirmModal } = useConfirm();
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState(emptyForm());
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -129,7 +131,7 @@ export default function PipelinePage() {
                     <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
                       <button className="icon-btn" style={{ padding: 3 }} title="Modifier" onClick={() => openEdit(customer)}><Edit2 size={11} /></button>
                       <button className="icon-btn icon-btn--danger" style={{ padding: 3 }} title="Supprimer"
-                        onClick={() => { if (window.confirm(`Supprimer "${customer.name}" ?`)) deleteMutation.mutate(customer.id); }}>
+                        onClick={async () => { const ok = await confirm({ title: `Supprimer "${customer.name}" ?`, confirmLabel: 'Supprimer', variant: 'danger' }); if (ok) deleteMutation.mutate(customer.id); }}>
                         <Trash2 size={11} />
                       </button>
                     </div>
@@ -192,6 +194,7 @@ export default function PipelinePage() {
           </form>
         </Modal>
       )}
+      {confirmModal}
     </div>
   );
 }

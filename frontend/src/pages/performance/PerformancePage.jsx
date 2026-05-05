@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { TrendingUp, TrendingDown, Plus, X, Star } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 import apiClient from '../../api/client.js';
 
 const fetchEmployees   = () => apiClient.get('/employees?limit=200&status=ACTIVE');
@@ -128,6 +129,7 @@ function EvalModal({ employees, onClose, onSave, isLoading }) {
 /* ══════════════════════════════════════════════════════════════════ */
 export default function PerformancePage() {
   const qc = useQueryClient();
+  const { confirm, modal: confirmModal } = useConfirm();
   const [selected, setSelected]   = useState(null);
   const [sortBy, setSortBy]       = useState('score');
   const [showModal, setShowModal] = useState(false);
@@ -364,7 +366,7 @@ export default function PerformancePage() {
                                     <div style={{ height: '100%', width: `${ev.score}%`, background: emp.color, borderRadius: 3 }} />
                                   </div>
                                   <span style={{ fontWeight: 700, color: emp.color, minWidth: 38 }}>{Math.round(ev.score)}%</span>
-                                  <button onClick={() => { if (window.confirm('Supprimer cette évaluation ?')) deleteMut.mutate(ev.id); }}
+                                  <button onClick={async () => { const ok = await confirm({ title: 'Supprimer cette évaluation ?', confirmLabel: 'Supprimer', variant: 'danger' }); if (ok) deleteMut.mutate(ev.id); }}
                                     style={{ background: 'none', border: 'none', color: '#ef444488', cursor: 'pointer', padding: '0 4px', fontSize: 14 }}>✕</button>
                                 </div>
                               ))}
@@ -399,6 +401,7 @@ export default function PerformancePage() {
       )}
 
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}`}</style>
+      {confirmModal}
     </div>
   );
 }

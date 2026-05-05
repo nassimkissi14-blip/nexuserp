@@ -98,6 +98,46 @@ router.patch('/:id', authenticate, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// POST /recruitment/:id/hire — convert candidate to employee
+router.post('/:id/hire', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'DIRECTOR', 'MANAGER'), async (req, res, next) => {
+  try {
+    const candidate = await prisma.candidate.findFirst({ where: { id: req.params.id, companyId: req.companyId } });
+    if (!candidate) return res.status(404).json({ success: false, message: 'Candidat non trouvé' });
+
+    // Check if an employee with this email already exists
+    if (candidate.email) {
+      const existing = await prisma.employee.findFirst({ where: { companyId: req.companyId, email: candidate.email } });
+      if (existing) return res.status(400).json({ success: false, message: `Un employé avec l'email ${candidate.email} existe déjà` });
+    }
+
+    const { firstName, lastName } = (() => {
+      const parts = (candidate.name || '').trim().split(/\s+/);
+      return { firstName: parts[0] || candidate.name, lastName: parts.slice(1).join(' ') || '-' };
+    })();
+
+    const employee = await prisma.employee.create({
+      data: {
+        companyId: req.companyId,
+        firstName,
+        lastName,
+        email: candidate.email || `${firstName.toLowerCase()}.${lastName.toLowerCase()}@company.local`,
+        phone: candidate.phone || null,
+        position: candidate.position || 'Non défini',
+        department: req.body.department || 'Non défini',
+        salary: Number(req.body.salary) || 0,
+        hireDate: req.body.hireDate ? new Date(req.body.hireDate) : new Date(),
+        contractType: req.body.contractType || 'CDI',
+        status: 'ACTIVE',
+      },
+    });
+
+    // Mark candidate as HIRED
+    await prisma.candidate.update({ where: { id: req.params.id }, data: { stage: 'HIRED' } });
+
+    res.status(201).json({ success: true, data: employee, message: `${candidate.name} ajouté comme employé` });
+  } catch (error) { next(error); }
+});
+
 // DELETE /recruitment/:id
 router.delete('/:id', authenticate, async (req, res, next) => {
   try {

@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, Edit2, Trash2, Eye } from 'lucide-react';
+import { TableSkeleton } from '../../components/ui/Skeleton.jsx';
 import { suppliersAPI } from '../../api/client.js';
 import toast from 'react-hot-toast';
+import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 
 const Modal = ({ title, onClose, children, size = 'md' }) => (
   <div className="modal-overlay" onClick={onClose}>
@@ -17,6 +19,7 @@ const emptyForm = () => ({ name: '', email: '', phone: '', address: '', country:
 
 export default function SuppliersPage() {
   const queryClient = useQueryClient();
+  const { confirm, modal: confirmModal } = useConfirm();
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState(emptyForm());
@@ -43,7 +46,7 @@ export default function SuppliersPage() {
 
   const deleteMutation = useMutation({
     mutationFn: suppliersAPI.delete,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['suppliers'] }); toast.success('Fournisseur désactivé'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['suppliers'] }); toast.success('Fournisseur supprimé'); },
     onError: (e) => toast.error(e?.message || 'Erreur'),
   });
 
@@ -73,10 +76,10 @@ export default function SuppliersPage() {
           { label: 'Avec commandes', value: suppliers.filter(s => (s._count?.purchaseOrders || 0) > 0).length, color: '#f59e0b', icon: '📦' },
           { label: 'Délai paiement moyen', value: suppliers.length ? Math.round(suppliers.reduce((s, sup) => s + sup.paymentTerms, 0) / suppliers.length) + ' jours' : '—', color: '#10b981', icon: '💳' },
         ].map((k, i) => (
-          <div key={i} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
-            <div style={{ fontSize: 22, marginBottom: 8 }}>{k.icon}</div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: k.color, marginBottom: 4 }}>{k.value}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{k.label}</div>
+          <div key={i} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderTop: `3px solid ${k.color}`, borderRadius: 'var(--radius-lg)', padding: 18 }}>
+            <div style={{ fontSize: 22, marginBottom: 10 }}>{k.icon}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: k.color, marginBottom: 4, letterSpacing: -0.5 }}>{k.value}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 500 }}>{k.label}</div>
           </div>
         ))}
       </div>
@@ -91,7 +94,7 @@ export default function SuppliersPage() {
 
       {/* Table */}
       {isLoading ? (
-        <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-muted)' }}>Chargement…</div>
+        <TableSkeleton rows={5} cols={7} />
       ) : (
         <div className="table-card">
           <table className="data-table">
@@ -114,7 +117,7 @@ export default function SuppliersPage() {
                   <td style={{ fontSize: 13 }}>{s.country || '—'}</td>
                   <td style={{ fontSize: 12, fontFamily: 'monospace' }}>{s.taxId || '—'}</td>
                   <td>
-                    <span style={{ padding: '2px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600, background: s.paymentTerms <= 30 ? '#10b98122' : '#f59e0b22', color: s.paymentTerms <= 30 ? '#10b981' : '#f59e0b' }}>
+                    <span className={`badge badge--${s.paymentTerms <= 30 ? 'green' : 'orange'}`}>
                       {s.paymentTerms} jours
                     </span>
                   </td>
@@ -122,7 +125,7 @@ export default function SuppliersPage() {
                   <td>
                     <div className="table-actions">
                       <button className="icon-btn" onClick={() => { setForm({ name: s.name, email: s.email || '', phone: s.phone || '', address: s.address || '', country: s.country || 'DZ', taxId: s.taxId || '', paymentTerms: s.paymentTerms }); setModal({ type: 'edit', supplier: s }); }}><Edit2 size={13} /></button>
-                      <button className="icon-btn icon-btn--danger" onClick={() => { if (window.confirm('Désactiver ce fournisseur ?')) deleteMutation.mutate(s.id); }}><Trash2 size={13} /></button>
+                      <button className="icon-btn icon-btn--danger" onClick={async () => { const ok = await confirm({ title: `Supprimer "${s.name}" ?`, message: 'Cette action est irréversible.', confirmLabel: 'Supprimer', variant: 'danger' }); if (ok) deleteMutation.mutate(s.id); }}><Trash2 size={13} /></button>
                     </div>
                   </td>
                 </tr>
@@ -156,6 +159,7 @@ export default function SuppliersPage() {
           </form>
         </Modal>
       )}
+      {confirmModal}
     </div>
   );
 }

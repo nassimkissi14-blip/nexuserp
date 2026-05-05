@@ -5,6 +5,7 @@ import { invoicesAPI, customersAPI } from '../../api/client.js';
 import apiClient from '../../api/client.js';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
+import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 import { QrButton, QrBatchButton } from '../../components/ui/QrCodeWidget.jsx';
 import { useAuthStore } from '../../store/index.js';
 
@@ -305,6 +306,7 @@ function LineItemsEditor({ items, onChange }) {
 /* ─── Main page ──────────────────────────────────────────────── */
 export default function InvoicesPage() {
   const queryClient = useQueryClient();
+  const { confirm, modal: confirmModal } = useConfirm();
   const { user } = useAuthStore();
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('ALL');
@@ -459,13 +461,13 @@ export default function InvoicesPage() {
                       </button>
                       {['DRAFT', 'SENT', 'OVERDUE'].includes(inv.status) && (
                         <button className="icon-btn" title="Marquer payée" style={{ color: '#10b981' }}
-                          onClick={() => { if (window.confirm(`Marquer ${inv.reference} comme payée ?`)) payMutation.mutate(inv.id); }}>
+                          onClick={async () => { const ok = await confirm({ title: `Marquer ${inv.reference} comme payée ?`, confirmLabel: 'Confirmer', variant: 'info' }); if (ok) payMutation.mutate(inv.id); }}>
                           <Check size={13} />
                         </button>
                       )}
                       {['DRAFT', 'SENT', 'OVERDUE'].includes(inv.status) && (
                         <button className="icon-btn icon-btn--danger" title="Annuler la facture"
-                          onClick={() => { if (window.confirm(`Annuler la facture ${inv.reference} ? Cette action est irréversible.`)) cancelMutation.mutate(inv.id); }}>
+                          onClick={async () => { const ok = await confirm({ title: `Annuler ${inv.reference} ?`, message: 'Cette action est irréversible.', confirmLabel: 'Annuler', variant: 'danger' }); if (ok) cancelMutation.mutate(inv.id); }}>
                           <X size={13} />
                         </button>
                       )}
@@ -488,7 +490,7 @@ export default function InvoicesPage() {
               </button>
               {['DRAFT', 'SENT', 'OVERDUE'].includes(modal.invoice.status) && (
                 <button className="btn btn--ghost" style={{ fontSize: 12, color: '#ef4444', borderColor: '#ef4444' }}
-                  onClick={() => { if (window.confirm(`Annuler la facture ${modal.invoice.reference} ?`)) { cancelMutation.mutate(modal.invoice.id); setModal(null); } }}>
+                  onClick={async () => { const ok = await confirm({ title: `Annuler ${modal.invoice.reference} ?`, message: 'Cette action est irréversible.', confirmLabel: 'Annuler', variant: 'danger' }); if (ok) { cancelMutation.mutate(modal.invoice.id); setModal(null); } }}>
                   <X size={13} /> Annuler
                 </button>
               )}
@@ -618,6 +620,7 @@ export default function InvoicesPage() {
           </form>
         </Modal>
       )}
+      {confirmModal}
     </div>
   );
 }

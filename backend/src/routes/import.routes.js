@@ -21,7 +21,7 @@ function toDate(val) {
 }
 
 /* ── POST /import/employees ──────────────────────────────────────── */
-router.post('/employees', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'MANAGER'), upload.single('file'), async (req, res, next) => {
+router.post('/employees', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'MANAGER', 'DIRECTOR'), upload.single('file'), async (req, res, next) => {
   try {
     const rows = parseSheet(req.file.buffer);
     const companyId = req.companyId;
@@ -57,7 +57,7 @@ router.post('/employees', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'MANAG
 });
 
 /* ── POST /import/customers ──────────────────────────────────────── */
-router.post('/customers', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'MANAGER'), upload.single('file'), async (req, res, next) => {
+router.post('/customers', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'MANAGER', 'DIRECTOR'), upload.single('file'), async (req, res, next) => {
   try {
     const rows = parseSheet(req.file.buffer);
     const companyId = req.companyId;
@@ -91,7 +91,7 @@ router.post('/customers', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'MANAG
 });
 
 /* ── POST /import/products ───────────────────────────────────────── */
-router.post('/products', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'MANAGER'), upload.single('file'), async (req, res, next) => {
+router.post('/products', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'MANAGER', 'DIRECTOR'), upload.single('file'), async (req, res, next) => {
   try {
     const rows = parseSheet(req.file.buffer);
     const companyId = req.companyId;

@@ -78,6 +78,86 @@ export async function sendInvoiceEmail({ to, invoice, company }) {
   return { messageId: info.messageId, previewUrl: nodemailer.getTestMessageUrl(info) || null };
 }
 
+export async function sendApprovalEmail({ to, firstName, companyName }) {
+  const html = `
+  <!DOCTYPE html><html><head><meta charset="utf-8"></head>
+  <body style="font-family:Inter,Arial,sans-serif;background:#f0fdf4;margin:0;padding:20px">
+    <div style="max-width:560px;margin:0 auto;background:white;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08)">
+      <div style="background:linear-gradient(135deg,#10b981,#059669);padding:32px;text-align:center;color:white">
+        <div style="font-size:48px;margin-bottom:12px">✅</div>
+        <div style="font-size:22px;font-weight:800;letter-spacing:-0.5px">Accès approuvé !</div>
+        <div style="margin-top:6px;opacity:0.9;font-size:14px">${companyName || 'NexusERP'}</div>
+      </div>
+      <div style="padding:32px">
+        <p style="font-size:16px;color:#0f172a;font-weight:600;margin:0 0 12px">Bonjour ${firstName},</p>
+        <p style="font-size:14px;color:#475569;line-height:1.6;margin:0 0 20px">
+          Votre demande d'accès à la plateforme <strong>${companyName || 'NexusERP'}</strong> a été
+          <strong style="color:#10b981">approuvée</strong> par l'équipe RH.
+        </p>
+        <p style="font-size:14px;color:#475569;line-height:1.6;margin:0 0 28px">
+          Vous pouvez maintenant vous connecter avec votre email et mot de passe.
+        </p>
+        <div style="text-align:center">
+          <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/login"
+             style="display:inline-block;background:linear-gradient(135deg,#10b981,#059669);color:white;font-size:14px;font-weight:700;padding:14px 32px;border-radius:10px;text-decoration:none;letter-spacing:0.2px">
+            Se connecter →
+          </a>
+        </div>
+      </div>
+      <div style="padding:16px 32px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8;text-align:center">
+        NexusERP • Ce message est automatique, merci de ne pas y répondre
+      </div>
+    </div>
+  </body></html>`;
+
+  const info = await getTransporter().sendMail({
+    from: `"${companyName || 'NexusERP'}" <${process.env.SMTP_USER || 'noreply@nexuserp.dz'}>`,
+    to,
+    subject: `✅ Votre accès à ${companyName || 'NexusERP'} a été approuvé`,
+    html,
+  });
+  return { messageId: info.messageId, previewUrl: nodemailer.getTestMessageUrl(info) || null };
+}
+
+export async function sendRejectionEmail({ to, firstName, companyName, reason }) {
+  const reasonBlock = reason
+    ? `<div style="margin:20px 0;padding:14px 16px;background:#fff7ed;border-left:3px solid #f97316;border-radius:0 8px 8px 0;font-size:13px;color:#92400e"><strong>Motif :</strong> ${reason}</div>`
+    : '';
+
+  const html = `
+  <!DOCTYPE html><html><head><meta charset="utf-8"></head>
+  <body style="font-family:Inter,Arial,sans-serif;background:#f8fafc;margin:0;padding:20px">
+    <div style="max-width:560px;margin:0 auto;background:white;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08)">
+      <div style="background:linear-gradient(135deg,#64748b,#475569);padding:32px;text-align:center;color:white">
+        <div style="font-size:48px;margin-bottom:12px">🔒</div>
+        <div style="font-size:22px;font-weight:800;letter-spacing:-0.5px">Demande non approuvée</div>
+        <div style="margin-top:6px;opacity:0.9;font-size:14px">${companyName || 'NexusERP'}</div>
+      </div>
+      <div style="padding:32px">
+        <p style="font-size:16px;color:#0f172a;font-weight:600;margin:0 0 12px">Bonjour ${firstName},</p>
+        <p style="font-size:14px;color:#475569;line-height:1.6;margin:0 0 8px">
+          Votre demande d'accès à la plateforme <strong>${companyName || 'NexusERP'}</strong> n'a pas pu être acceptée.
+        </p>
+        ${reasonBlock}
+        <p style="font-size:13px;color:#94a3b8;line-height:1.6;margin:16px 0 0">
+          Pour toute question, contactez directement votre responsable RH.
+        </p>
+      </div>
+      <div style="padding:16px 32px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8;text-align:center">
+        NexusERP • Ce message est automatique, merci de ne pas y répondre
+      </div>
+    </div>
+  </body></html>`;
+
+  const info = await getTransporter().sendMail({
+    from: `"${companyName || 'NexusERP'}" <${process.env.SMTP_USER || 'noreply@nexuserp.dz'}>`,
+    to,
+    subject: `Votre demande d'accès à ${companyName || 'NexusERP'}`,
+    html,
+  });
+  return { messageId: info.messageId, previewUrl: nodemailer.getTestMessageUrl(info) || null };
+}
+
 export async function sendQuoteEmail({ to, quote, company }) {
   const items = quote.items || [];
   const itemRows = items.map(it => `

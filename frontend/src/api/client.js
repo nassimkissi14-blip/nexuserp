@@ -40,6 +40,7 @@ export const modulesAPI = {
   getAll: () => apiClient.get('/modules'),
   toggle: (moduleId) => apiClient.patch(`/modules/${moduleId}/toggle`),
   toggleSubmodule: (submoduleId) => apiClient.patch(`/modules/submodules/${submoduleId}/toggle`),
+  reorder: (order) => apiClient.patch('/modules/reorder', { order }),
 };
 
 export const dashboardAPI = {
@@ -157,6 +158,7 @@ export const recruitmentAPI = {
   getAll: (params) => apiClient.get('/recruitment', { params }),
   create: (data) => apiClient.post('/recruitment', data),
   update: (id, data) => apiClient.patch(`/recruitment/${id}`, data),
+  hire: (id, data) => apiClient.post(`/recruitment/${id}/hire`, data),
   delete: (id) => apiClient.delete(`/recruitment/${id}`),
 };
 
@@ -212,10 +214,12 @@ export const gpaoAPI = {
   deleteRouting:  (id)       => apiClient.delete(`/gpao/routings/${id}`),
   catalog:        (p)        => apiClient.get('/gpao/supplier-catalog', { params: p }),
   addCatalog:     (d)        => apiClient.post('/gpao/supplier-catalog', d),
+  bulkCatalog:    (d)        => apiClient.post('/gpao/supplier-catalog/bulk', d),
   updateCatalog:  (id, d)    => apiClient.patch(`/gpao/supplier-catalog/${id}`, d),
   deleteCatalog:  (id)       => apiClient.delete(`/gpao/supplier-catalog/${id}`),
   calendars:      ()         => apiClient.get('/gpao/calendars'),
   createCalendar: (d)        => apiClient.post('/gpao/calendars', d),
+  updateCalendar: (id, d)    => apiClient.patch(`/gpao/calendars/${id}`, d),
   generateDays:   (id, d)    => apiClient.post(`/gpao/calendars/${id}/generate`, d),
   updateDay:      (id, d)    => apiClient.patch(`/gpao/calendars/${id}/day`, d),
   runMrp:         (d)        => apiClient.post('/gpao/mrp/run', d),

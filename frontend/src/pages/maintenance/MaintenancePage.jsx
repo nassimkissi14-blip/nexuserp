@@ -6,6 +6,7 @@ import {
   ShieldAlert, Calendar, BarChart2, ChevronDown, ChevronRight
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 import apiClient from '../../api/client.js';
 
 /* ── API ─────────────────────────────────────────────────────────── */
@@ -402,6 +403,7 @@ function MachineCard({ equip, onEdit, onRequest, onDelete }) {
 ══════════════════════════════════════════════════════════════════ */
 export default function MaintenancePage() {
   const qc = useQueryClient();
+  const { confirm, modal: confirmModal } = useConfirm();
   const [tab, setTab] = useState('overview');
   const [modal, setModal] = useState(null);
 
@@ -650,7 +652,7 @@ export default function MaintenancePage() {
                     equip={e}
                     onEdit={() => setModal({ type: 'equip', data: e })}
                     onRequest={() => setModal({ type: 'request', equipId: e.id })}
-                    onDelete={() => { if (window.confirm(`Supprimer "${e.name}" ?`)) deleteEquip.mutate(e.id); }}
+                    onDelete={async () => { const ok = await confirm({ title: `Supprimer "${e.name}" ?`, confirmLabel: 'Supprimer', variant: 'danger' }); if (ok) deleteEquip.mutate(e.id); }}
                   />
                 ))}
               </div>
@@ -778,7 +780,7 @@ export default function MaintenancePage() {
                   equip={e}
                   onEdit={() => setModal({ type: 'equip', data: e })}
                   onRequest={() => setModal({ type: 'request', equipId: e.id })}
-                  onDelete={() => { if (window.confirm(`Supprimer "${e.name}" ?`)) deleteEquip.mutate(e.id); }}
+                  onDelete={async () => { const ok = await confirm({ title: `Supprimer "${e.name}" ?`, confirmLabel: 'Supprimer', variant: 'danger' }); if (ok) deleteEquip.mutate(e.id); }}
                 />
               ))}
             </div>
@@ -825,7 +827,7 @@ export default function MaintenancePage() {
                       <span style={{ fontSize: 12, background: stat.color + '22', color: stat.color, borderRadius: 20, padding: '3px 10px', fontWeight: 600 }}>{stat.label}</span>
                       <button className="btn btn--sm btn--secondary" onClick={() => setModal({ type: 'request', data: r })}>Modifier</button>
                       <button className="btn btn--sm" style={{ background: '#ef444411', color: '#ef4444', border: '1px solid #ef444433', padding: '4px 8px' }}
-                        title="Supprimer" onClick={() => { if (window.confirm('Supprimer cette demande ?')) deleteReq.mutate(r.id); }}>
+                        title="Supprimer" onClick={async () => { const ok = await confirm({ title: 'Supprimer cette demande ?', confirmLabel: 'Supprimer', variant: 'danger' }); if (ok) deleteReq.mutate(r.id); }}>
                         <X size={12} />
                       </button>
                     </div>
@@ -880,7 +882,7 @@ export default function MaintenancePage() {
                         Modifier
                       </button>
                       <button className="btn btn--sm" style={{ background: '#ef444411', color: '#ef4444', border: '1px solid #ef444433', padding: '4px 8px' }}
-                        title="Supprimer" onClick={() => { if (window.confirm('Supprimer cet ordre ?')) deleteOrder.mutate(o.id); }}>
+                        title="Supprimer" onClick={async () => { const ok = await confirm({ title: 'Supprimer cet ordre ?', confirmLabel: 'Supprimer', variant: 'danger' }); if (ok) deleteOrder.mutate(o.id); }}>
                         <X size={12} />
                       </button>
                       {o.status === 'PLANNED' && (
@@ -993,6 +995,7 @@ export default function MaintenancePage() {
           100% { transform: scale(2.2); opacity: 0;  }
         }
       `}</style>
+      {confirmModal}
     </div>
   );
 }

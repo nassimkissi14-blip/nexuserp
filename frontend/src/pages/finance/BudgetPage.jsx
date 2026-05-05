@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from '../../api/client.js';
+import { productsAPI } from '../../api/client.js';
+
 import { Plus, TrendingUp, TrendingDown, Target, Trash2, Edit2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 
 const budgetAPI = {
   getAll: (year) => apiClient.get('/budget', { params: { year } }),
@@ -30,6 +33,7 @@ const Modal = ({ title, onClose, children }) => (
 
 export default function BudgetPage() {
   const queryClient = useQueryClient();
+  const { confirm, modal: confirmModal } = useConfirm();
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
   const [modal, setModal] = useState(null); // null | 'create' | { type:'edit', line }
@@ -42,6 +46,12 @@ export default function BudgetPage() {
     queryKey: ['budget', year],
     queryFn: () => budgetAPI.getAll(year),
   });
+
+  const { data: productsData } = useQuery({
+    queryKey: ['products'],
+    queryFn: () => productsAPI.getAll({ limit: 500 }),
+  });
+  const productNames = (productsData?.data || []).map(p => p.name).filter(Boolean);
 
   const createMutation = useMutation({
     mutationFn: budgetAPI.create,
@@ -62,6 +72,7 @@ export default function BudgetPage() {
   });
 
   const lines = data?.data || [];
+  const existingExpenseLabels = lines.filter(l => l.type === 'EXPENSE').map(l => l.label).filter(Boolean);
   const totalBudgeted = data?.totalBudgeted || 0;
   const totalActual = data?.totalActual || 0;
   const income = lines.filter(l => l.type === 'INCOME');
@@ -113,7 +124,7 @@ export default function BudgetPage() {
                 </div>
                 <div style={{ display: 'flex', gap: 4 }}>
                   <button className="icon-btn" title="Modifier" onClick={() => openEdit(line)}><Edit2 size={12} /></button>
-                  <button className="icon-btn icon-btn--danger" title="Supprimer" onClick={() => { if (window.confirm('Supprimer cette ligne ?')) deleteMutation.mutate(line.id); }}><Trash2 size={12} /></button>
+                  <button className="icon-btn icon-btn--danger" title="Supprimer" onClick={async () => { const ok = await confirm({ title: 'Supprimer cette ligne ?', confirmLabel: 'Supprimer', variant: 'danger' }); if (ok) deleteMutation.mutate(line.id); }}><Trash2 size={12} /></button>
                 </div>
               </div>
             );
@@ -177,7 +188,7 @@ export default function BudgetPage() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
               <div className="form-group">
                 <label>Type</label>
-                <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value, category: e.target.value === 'EXPENSE' ? CATEGORIES_EXPENSE[0] : CATEGORIES_INCOME[0] }))}>
+                <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value, category: e.target.value === 'EXPENSE' ? CATEGORIES_EXPENSE[0] : CATEGORIES_INCOME[0], label: '' }))}>
                   <option value="EXPENSE">Charge</option>
                   <option value="INCOME">Produit</option>
                 </select>
@@ -189,8 +200,30 @@ export default function BudgetPage() {
                 </select>
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Libellé *</label>
-                <input value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} required />
+                <label>{form.type === 'INCOME' ? 'Produit *' : 'Libellé de la charge *'}</label>
+                {form.type === 'INCOME' ? (
+                  <select
+                    value={form.label}
+                    onChange={e => setForm(f => ({ ...f, label: e.target.value }))}
+                    required
+                  >
+                    <option value="">— Choisir un produit du stock —</option>
+                    {productNames.map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                ) : (
+                  <>
+                    <input
+                      list="budget-charge-list"
+                      value={form.label}
+                      onChange={e => setForm(f => ({ ...f, label: e.target.value }))}
+                      required
+                      placeholder="Ex: Loyer, Salaires, Électricité…"
+                    />
+                    <datalist id="budget-charge-list">
+                      {Array.from(new Set([...CATEGORIES_EXPENSE, ...existingExpenseLabels])).map(n => <option key={n} value={n} />)}
+                    </datalist>
+                  </>
+                )}
               </div>
               <div className="form-group">
                 <label>Montant budgété (DZD) *</label>
@@ -213,6 +246,7 @@ export default function BudgetPage() {
           </form>
         </Modal>
       )}
+      {confirmModal}
     </div>
   );
 }

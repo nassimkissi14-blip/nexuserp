@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ordersAPI, customersAPI } from '../../api/client.js';
 import { Search, Plus, Eye, Edit2, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 import { motion } from 'framer-motion';
 import { QrButton, QrBatchButton } from '../../components/ui/QrCodeWidget.jsx';
 
@@ -73,6 +74,7 @@ const OrderForm = ({ initial, customers, onSubmit, onCancel, isLoading }) => {
 
 export default function OrdersPage() {
   const queryClient = useQueryClient();
+  const { confirm, modal: confirmModal } = useConfirm();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -200,7 +202,7 @@ export default function OrdersPage() {
                     )}
                     {order.status !== 'DELIVERED' && order.status !== 'CANCELLED' && (
                       <button className="btn btn--ghost" style={{ padding: '4px 10px', fontSize: 11, color: '#ef4444' }}
-                        onClick={() => { if (window.confirm('Annuler cette commande ?')) deleteMutation.mutate(order.id); }}>Annuler</button>
+                        onClick={async () => { const ok = await confirm({ title: 'Annuler cette commande ?', confirmLabel: 'Annuler', variant: 'danger' }); if (ok) deleteMutation.mutate(order.id); }}>Annuler</button>
                     )}
                   </div>
                 </td>
@@ -291,6 +293,7 @@ export default function OrdersPage() {
           </div>
         </Modal>
       )}
+      {confirmModal}
     </div>
   );
 }

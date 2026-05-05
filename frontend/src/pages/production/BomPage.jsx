@@ -4,6 +4,7 @@ import { Plus, Layers, Trash2, Edit2, Package, CheckCircle } from 'lucide-react'
 import toast from 'react-hot-toast';
 import apiClient from '../../api/client.js';
 import AnimatedPage from '../../components/ui/AnimatedPage.jsx';
+import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 import {
   PageHeader, Btn, Modal, FormGrid, FormActions,
   Field, Input, Select, EmptyState, Badge, Card, SectionLabel
@@ -42,14 +43,16 @@ function BomModal({ bom, products, onClose, onSave, loading }) {
   });
 
   const prods = products?.data || products || [];
+  const finishedProds  = prods.filter(p => p.articleType === 'FABRIQUE' || !p.articleType);
+  const componentProds = prods.filter(p => p.id !== form.productId);
 
   return (
     <Modal title={bom ? `Modifier — ${bom.product?.name}` : 'Nouvelle nomenclature (BOM)'} onClose={onClose} width={700}>
       <FormGrid cols={2}>
         <Field label="Produit fini *" span={2}>
           <Select value={form.productId} onChange={e => set('productId', e.target.value)}>
-            <option value="">Sélectionner un produit…</option>
-            {prods.map(p => <option key={p.id} value={p.id}>{p.name}{p.reference ? ` — ${p.reference}` : ''}</option>)}
+            <option value="">Sélectionner un produit fabriqué…</option>
+            {finishedProds.map(p => <option key={p.id} value={p.id}>{p.name}{p.sku ? ` — ${p.sku}` : ''}</option>)}
           </Select>
         </Field>
         <Field label="Version">
@@ -81,7 +84,11 @@ function BomModal({ bom, products, onClose, onSave, loading }) {
             <Field label={i === 0 ? 'Composant' : ''}>
               <Select value={item.productId} onChange={e => setItem(i, 'productId', e.target.value)}>
                 <option value="">— Choisir —</option>
-                {prods.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {componentProds.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.articleType === 'ACHETE' ? '🛒' : '⚙️'} {p.name}{p.sku ? ` (${p.sku})` : ''}
+                  </option>
+                ))}
               </Select>
             </Field>
             <Field label={i === 0 ? 'Quantité' : ''}>
@@ -173,6 +180,7 @@ function BomCard({ bom, onEdit, onDelete, onToggle }) {
 /* ── MAIN PAGE ──────────────────────────────── */
 export default function BomPage() {
   const qc = useQueryClient();
+  const { confirm, modal: confirmModal } = useConfirm();
   const [modal, setModal] = useState(null);
 
   const inv = () => qc.invalidateQueries({ queryKey: ['prod-bom'] });
@@ -257,10 +265,9 @@ export default function BomPage() {
                 key={bom.id}
                 bom={bom}
                 onEdit={() => setModal({ type: 'edit', data: bom })}
-                onDelete={() => {
-                  if (confirm(`Supprimer la nomenclature "${bom.product?.name}" v${bom.version} ?`)) {
-                    deleteBom.mutate(bom.id);
-                  }
+                onDelete={async () => {
+                  const ok = await confirm({ title: `Supprimer la nomenclature "${bom.product?.name}" v${bom.version} ?`, confirmLabel: 'Supprimer', variant: 'danger' });
+                  if (ok) deleteBom.mutate(bom.id);
                 }}
               />
             ))}
@@ -281,6 +288,7 @@ export default function BomPage() {
           />
         )}
       </div>
+      {confirmModal}
     </AnimatedPage>
   );
 }

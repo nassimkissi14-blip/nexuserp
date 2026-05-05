@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Edit2, ChevronDown, ChevronRight, Settings } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 import { gpaoAPI } from '../../api/client.js';
 import apiClient from '../../api/client.js';
 
@@ -114,6 +115,7 @@ function RoutingModal({ routing, workCenters, products, onClose, onSave, loading
 
 function RoutingCard({ routing, onEdit, onDelete }) {
   const [open, setOpen] = useState(false);
+  const { confirm, modal: confirmModal } = useConfirm();
   const total = routing.phases?.reduce((s, p) => s + (p.setupTime || 0) + (p.machineTime || 0) + (p.laborTime || 0) + (p.transferTime || 0), 0) || 0;
 
   return (
@@ -131,7 +133,7 @@ function RoutingCard({ routing, onEdit, onDelete }) {
         </div>
         <div style={{ display: 'flex', gap: 6 }} onClick={e => e.stopPropagation()}>
           <button className="icon-btn" onClick={() => onEdit(routing)} title="Modifier"><Edit2 size={14} /></button>
-          <button className="icon-btn icon-btn--danger" onClick={() => { if (window.confirm(`Supprimer la gamme ${routing.code} ?`)) onDelete(routing.id); }} title="Supprimer"><Trash2 size={14} /></button>
+          <button className="icon-btn icon-btn--danger" onClick={async () => { const ok = await confirm({ title: `Supprimer la gamme ${routing.code} ?`, confirmLabel: 'Supprimer', variant: 'danger' }); if (ok) onDelete(routing.id); }} title="Supprimer"><Trash2 size={14} /></button>
         </div>
       </div>
 
@@ -174,6 +176,7 @@ function RoutingCard({ routing, onEdit, onDelete }) {
           )}
         </div>
       )}
+      {confirmModal}
     </div>
   );
 }

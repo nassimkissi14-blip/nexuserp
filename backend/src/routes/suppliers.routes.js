@@ -82,13 +82,18 @@ router.patch('/:id', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'DIRECTOR',
   } catch (error) { next(error); }
 });
 
-// DELETE /suppliers/:id (soft delete)
-router.delete('/:id', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
+// DELETE /suppliers/:id
+router.delete('/:id', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'DIRECTOR', 'MANAGER'), async (req, res, next) => {
   try {
-    const existing = await prisma.supplier.findFirst({ where: { id: req.params.id, companyId: req.companyId } });
+    const existing = await prisma.supplier.findFirst({
+      where: { id: req.params.id, companyId: req.companyId },
+      include: { _count: { select: { purchaseOrders: true } } },
+    });
     if (!existing) return res.status(404).json({ success: false, message: 'Fournisseur non trouvé' });
-    await prisma.supplier.update({ where: { id: req.params.id }, data: { isActive: false } });
-    res.json({ success: true, message: 'Fournisseur désactivé' });
+    if (existing._count.purchaseOrders > 0)
+      return res.status(400).json({ success: false, message: `Impossible de supprimer : ce fournisseur a ${existing._count.purchaseOrders} bon(s) de commande associé(s)` });
+    await prisma.supplier.delete({ where: { id: req.params.id } });
+    res.json({ success: true, message: 'Fournisseur supprimé' });
   } catch (error) { next(error); }
 });
 

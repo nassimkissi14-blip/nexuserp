@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Calendar, Plus, CheckCircle, AlertTriangle, Clock, Settings } from 'lucide-react';
+import { Calendar, Plus, CheckCircle, AlertTriangle, Clock, Settings, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import apiClient from '../../api/client.js';
 import AnimatedPage from '../../components/ui/AnimatedPage.jsx';
@@ -15,10 +15,26 @@ const api = {
   updateEquip: (id, d) => apiClient.patch(`/maintenance/equipment/${id}`, d),
   createOrder: (d)     => apiClient.post('/maintenance/orders', d),
   orders:      (p)     => apiClient.get('/maintenance/orders', { params: p }),
+  requests:    (p)     => apiClient.get('/maintenance/requests', { params: p }),
+  updateReq:   (id, d) => apiClient.patch(`/maintenance/requests/${id}`, d),
 };
 
-const fmtDate   = d => d ? new Date(d).toLocaleDateString('fr-FR') : '—';
-const daysUntil = d => d ? Math.ceil((new Date(d) - new Date()) / 86400000) : null;
+const fmtDate     = d => d ? new Date(d).toLocaleDateString('fr-FR') : '—';
+const fmtDateTime = d => d ? new Date(d).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+const daysUntil   = d => d ? Math.ceil((new Date(d) - new Date()) / 86400000) : null;
+
+const REQ_STATUS = {
+  OPEN:        { label: 'Ouverte',  color: '#ef4444' },
+  IN_PROGRESS: { label: 'En cours', color: '#f59e0b' },
+  RESOLVED:    { label: 'Résolue',  color: '#10b981' },
+  CLOSED:      { label: 'Fermée',   color: '#64748b' },
+};
+const PRIORITY_MAP = {
+  LOW:      { label: 'Faible',   color: '#64748b' },
+  MEDIUM:   { label: 'Moyenne',  color: '#3b82f6' },
+  HIGH:     { label: 'Haute',    color: '#f59e0b' },
+  CRITICAL: { label: 'Critique', color: '#ef4444' },
+};
 
 const URGENCY = (days) => {
   if (days === null) return { label: 'Non planifié', color: '#64748b', bg: 'rgba(100,116,139,0.1)' };
@@ -29,6 +45,47 @@ const URGENCY = (days) => {
   if (days <= 30)    return { label: `J-${days}`,           color: '#6366f1', bg: 'rgba(99,102,241,0.07)' };
   return               { label: `J-${days}`,                color: '#10b981', bg: 'rgba(16,185,129,0.07)' };
 };
+
+/* ── PREVENTIVE REQUEST ROW ─────────────────── */
+function PreventiveRequestRow({ req, onResolve }) {
+  const pri  = PRIORITY_MAP[req.priority] || { label: req.priority, color: '#64748b' };
+  const stat = REQ_STATUS[req.status]     || { label: req.status,   color: '#64748b' };
+
+  return (
+    <div style={{
+      background: 'var(--bg-card)', border: '1px solid var(--border)',
+      borderLeft: `4px solid #6366f1`, borderRadius: 'var(--radius-lg)',
+      padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12,
+    }}>
+      <div style={{ fontSize: 22 }}>🔄</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, color: '#6366f1', fontWeight: 700, fontFamily: 'monospace' }}>{req.number}</span>
+          <span style={{ fontSize: 11, background: pri.color + '22', color: pri.color, borderRadius: 10, padding: '1px 8px', fontWeight: 600 }}>{pri.label}</span>
+        </div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 2 }}>{req.title}</div>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+          {req.equipment?.name && <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{req.equipment.name} · </span>}
+          {fmtDateTime(req.reportedAt)}
+        </div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+        <span style={{ fontSize: 11, background: stat.color + '22', color: stat.color, borderRadius: 10, padding: '3px 10px', fontWeight: 600 }}>
+          {stat.label}
+        </span>
+        {(req.status === 'OPEN' || req.status === 'IN_PROGRESS') && (
+          <button onClick={onResolve} style={{
+            padding: '5px 12px', borderRadius: 'var(--radius)', border: '1px solid #10b98144',
+            background: '#10b98122', color: '#10b981', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 5,
+          }}>
+            <CheckCircle size={12} /> Résoudre
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 /* ── SCHEDULE MODAL ─────────────────────────── */
 function ScheduleModal({ equip, onClose, onSave, loading }) {
@@ -210,17 +267,23 @@ export default function PreventivePage() {
   const qc = useQueryClient();
   const [modal, setModal] = useState(null);
   const [view, setView] = useState('list'); // 'list' | 'calendar'
+  const [showAllRequests, setShowAllRequests] = useState(false);
 
   const inv = () => {
     qc.invalidateQueries({ queryKey: ['equipment'] });
     qc.invalidateQueries({ queryKey: ['maint-orders'] });
+    qc.invalidateQueries({ queryKey: ['maint-requests'] });
     qc.invalidateQueries({ queryKey: ['maint-dashboard'] });
   };
 
   const { data: equipData, isLoading } = useQuery({ queryKey: ['equipment'], queryFn: () => api.equipment() });
+  const { data: reqData }              = useQuery({ queryKey: ['maint-requests'], queryFn: () => api.requests(), staleTime: 30_000 });
   const equipment = (equipData?.data || []).filter(e => e.status !== 'RETIRED');
+  const allPrevRequests = (reqData?.data || []).filter(r => r.type === 'PREVENTIVE');
+  const openRequests    = allPrevRequests.filter(r => r.status === 'OPEN' || r.status === 'IN_PROGRESS');
+  const shownRequests   = showAllRequests ? allPrevRequests : openRequests;
 
-  const updateEquip  = useMutation({
+  const updateEquip = useMutation({
     mutationFn: ({ id, data }) => api.updateEquip(id, data),
     onSuccess: () => { inv(); setModal(null); toast.success('Maintenance planifiée'); },
     onError:   e  => toast.error(e.response?.data?.message || 'Erreur'),
@@ -228,6 +291,11 @@ export default function PreventivePage() {
   const createOrder = useMutation({
     mutationFn: api.createOrder,
     onSuccess: () => { inv(); toast.success('Ordre de maintenance créé'); },
+    onError:   e  => toast.error(e.response?.data?.message || 'Erreur'),
+  });
+  const updateReq = useMutation({
+    mutationFn: ({ id, data }) => api.updateReq(id, data),
+    onSuccess: () => { inv(); toast.success('Demande résolue'); },
     onError:   e  => toast.error(e.response?.data?.message || 'Erreur'),
   });
 
@@ -294,6 +362,52 @@ export default function PreventivePage() {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Preventive Requests Section */}
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+          <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 16 }}>🔄</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>Demandes préventives</span>
+              {openRequests.length > 0 && (
+                <span style={{ background: '#6366f122', color: '#6366f1', borderRadius: 10, padding: '1px 10px', fontSize: 12, fontWeight: 700 }}>
+                  {openRequests.length} en cours
+                </span>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {allPrevRequests.length > openRequests.length && (
+                <button onClick={() => setShowAllRequests(v => !v)} style={{
+                  background: 'none', border: 'none', color: 'var(--accent-primary)', fontSize: 12, cursor: 'pointer', fontWeight: 600,
+                }}>
+                  {showAllRequests ? 'Masquer résolues' : `Voir tout (${allPrevRequests.length})`}
+                </button>
+              )}
+            </div>
+          </div>
+          <div style={{ padding: '12px 16px' }}>
+            {shownRequests.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)', fontSize: 13 }}>
+                {allPrevRequests.length === 0 ? 'Aucune demande préventive — les demandes automatiques apparaîtront ici.' : 'Toutes les demandes préventives sont résolues ✅'}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {shownRequests.map(r => (
+                  <PreventiveRequestRow
+                    key={r.id}
+                    req={r}
+                    onResolve={() => updateReq.mutate({ id: r.id, data: { status: 'RESOLVED' } })}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Schedule section header */}
+        <div style={{ fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+          <Calendar size={14} /> Calendrier de planification
         </div>
 
         {/* Content */}

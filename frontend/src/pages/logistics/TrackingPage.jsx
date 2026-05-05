@@ -5,6 +5,7 @@ import AnimatedPage from '../../components/ui/AnimatedPage.jsx';
 import { PageHeader, EmptyState } from '../../components/ui/DesignSystem.jsx';
 import apiClient from '../../api/client.js';
 import toast from 'react-hot-toast';
+import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 
 const STEPS = [
   { key: 'PENDING',    label: 'En attente',  icon: '📋', color: '#64748b' },
@@ -18,6 +19,7 @@ const STEP_KEYS = STEPS.map(s => s.key);
 
 export default function TrackingPage() {
   const qc = useQueryClient();
+  const { confirm, modal: confirmModal } = useConfirm();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('');
 
@@ -153,7 +155,7 @@ export default function TrackingPage() {
                       )}
                       {item.status !== 'DELIVERED' && (
                         <button className="btn btn--ghost" style={{ fontSize: 11, padding: '5px 10px', color: '#ef4444', borderColor: '#ef444433' }}
-                          onClick={() => { if (window.confirm('Annuler cette expédition ?')) cancelMutation.mutate(item.id); }}>
+                          onClick={async () => { const ok = await confirm({ title: 'Annuler cette expédition ?', confirmLabel: 'Annuler', variant: 'warning' }); if (ok) cancelMutation.mutate(item.id); }}>
                           Annuler
                         </button>
                       )}
@@ -165,6 +167,7 @@ export default function TrackingPage() {
           </div>
         )}
       </div>
+      {confirmModal}
     </AnimatedPage>
   );
 }

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from '../../api/client.js';
 import { Plus, Megaphone, Trash2, Edit2, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 
 const announcementsAPI = {
   getAll: () => apiClient.get('/announcements'),
@@ -31,6 +32,7 @@ const emptyForm = () => ({ title: '', content: '', priority: 'NORMAL', expiresAt
 
 export default function AnnouncementsPage() {
   const queryClient = useQueryClient();
+  const { confirm, modal: confirmModal } = useConfirm();
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState(emptyForm());
 
@@ -144,7 +146,7 @@ export default function AnnouncementsPage() {
                         {ann.isActive ? <EyeOff size={13} /> : <Eye size={13} />}
                       </button>
                       <button className="icon-btn icon-btn--danger" title="Supprimer"
-                        onClick={() => { if (window.confirm('Supprimer cette annonce ?')) deleteMutation.mutate(ann.id); }}>
+                        onClick={async () => { const ok = await confirm({ title: 'Supprimer cette annonce ?', confirmLabel: 'Supprimer', variant: 'danger' }); if (ok) deleteMutation.mutate(ann.id); }}>
                         <Trash2 size={13} />
                       </button>
                     </div>
@@ -191,6 +193,7 @@ export default function AnnouncementsPage() {
           </form>
         </Modal>
       )}
+      {confirmModal}
     </div>
   );
 }

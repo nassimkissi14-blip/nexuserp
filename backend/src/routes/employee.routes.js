@@ -27,6 +27,45 @@ const upload = multer({
 
 const router = Router();
 
+// GET /employees/my — MUST be before /:id to avoid Express matching 'my' as an id
+router.get('/my', authenticate, async (req, res, next) => {
+  try {
+    const employee = await prisma.employee.findFirst({ where: { companyId: req.companyId, email: req.user.email } });
+    res.json({ success: true, data: employee || null });
+  } catch (e) { next(e); }
+});
+
+// GET /employees/export — export all employees as XLSX
+router.get('/export', authenticate, async (req, res, next) => {
+  try {
+    const { default: XLSX } = await import('xlsx');
+    const employees = await prisma.employee.findMany({
+      where: { companyId: req.companyId },
+      orderBy: { lastName: 'asc' },
+    });
+    const rows = employees.map(e => ({
+      'Prénom':         e.firstName,
+      'Nom':            e.lastName,
+      'Email':          e.email,
+      'Téléphone':      e.phone || '',
+      'Poste':          e.position,
+      'Département':    e.department,
+      'Salaire':        e.salary,
+      'Date embauche':  e.hireDate ? new Date(e.hireDate).toLocaleDateString('fr-FR') : '',
+      'Contrat':        e.contractType,
+      'Statut':         e.status,
+      'Adresse':        e.address || '',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Employés');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Disposition', 'attachment; filename="employes.xlsx"');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(buf);
+  } catch (e) { next(e); }
+});
+
 router.get('/', authenticate, async (req, res, next) => {
   try {
     const { page = 1, limit = 20, search, department, status } = req.query;
@@ -121,14 +160,6 @@ router.delete('/:id/cv', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'DIRECT
     await prisma.employee.update({ where: { id: req.params.id }, data: { cvUrl: null } });
     res.json({ success: true, message: 'CV supprimé' });
   } catch (error) { next(error); }
-});
-
-// GET /employees/my
-router.get("/my", authenticate, async (req, res, next) => {
-  try {
-    const employee = await prisma.employee.findFirst({ where: { companyId: req.companyId, email: req.user.email } });
-    res.json({ success: true, data: employee || null });
-  } catch (e) { next(e); }
 });
 
 export default router;

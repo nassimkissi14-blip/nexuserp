@@ -1,8 +1,10 @@
 import { useState, useRef } from 'react';
-import { Plus, Mail, Phone, Briefcase, Calendar, X, ChevronRight, Upload, FileText, Download, Eye } from 'lucide-react';
+import { Plus, Mail, Phone, Briefcase, Calendar, X, ChevronRight, Upload, FileText, Download, Eye, Edit2 } from 'lucide-react';
+import { KanbanSkeleton } from '../../components/ui/Skeleton.jsx';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { recruitmentAPI, uploadCandidateCV } from '../../api/client.js';
 import toast from 'react-hot-toast';
+import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 
 /* ─── Config ──────────────────────────────────────────────────── */
 const BASE_URL = import.meta.env.VITE_API_URL?.replace('/api/v1', '') || 'http://localhost:3001';
@@ -18,9 +20,12 @@ const JOBS = [
   'Développeur Full Stack', 'Responsable Commercial', 'Comptable',
   'Ingénieur Production', 'Chargé RH', 'Technicien IT',
   'Responsable Marketing', 'Analyste Financier', 'Chef de Projet',
+  'Technicien de Maintenance', 'Opérateur de Production', 'Responsable Qualité',
+  'Ingénieur Biomédical', 'Technicien Stérilisation', 'Responsable Logistique',
 ];
 
-const EMPTY_FORM = { name: '', position: JOBS[0], email: '', phone: '', note: '', stage: 'APPLIED' };
+const EMPTY_FORM = { name: '', position: '', email: '', phone: '', note: '', stage: 'APPLIED' };
+const EMPTY_HIRE = { department: 'Production', salary: '', hireDate: new Date().toISOString().split('T')[0], contractType: 'CDI' };
 
 /* ─── Modal ───────────────────────────────────────────────────── */
 const Modal = ({ title, onClose, children, wide }) => (
@@ -94,9 +99,22 @@ function CVUploader({ candidateId, currentCv, onUploaded }) {
 ═══════════════════════════════════════════════════════════════ */
 export default function RecruitmentPage() {
   const queryClient = useQueryClient();
-  const [modal, setModal]   = useState(null);
-  const [form, setForm]     = useState(EMPTY_FORM);
+  const { confirm, modal: confirmModal } = useConfirm();
+  const [modal, setModal]       = useState(null);
+  const [form, setForm]         = useState(EMPTY_FORM);
+  const [editMode, setEditMode] = useState(false);
+  const [editForm, setEditForm] = useState({});
+  const [hireModal, setHireModal] = useState(null);
+  const [hireForm, setHireForm]   = useState(EMPTY_HIRE);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const setE = (k, v) => setEditForm(f => ({ ...f, [k]: v }));
+
+  const openEdit = (candidate) => {
+    setEditForm({ name: candidate.name, position: candidate.position, email: candidate.email || '', phone: candidate.phone || '', note: candidate.note || '' });
+    setEditMode(true);
+  };
+
+  const closeModal = () => { setModal(null); setEditMode(false); };
 
   /* ── Fetch candidates ── */
   const { data, isLoading } = useQuery({
@@ -120,9 +138,12 @@ export default function RecruitmentPage() {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => recruitmentAPI.update(id, data),
-    onSuccess: () => {
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['candidates'] });
       toast.success('Candidat mis à jour');
+      setEditMode(false);
+      // refresh modal data
+      if (res?.data) setModal(res.data);
     },
     onError: (err) => toast.error(err?.message || 'Erreur'),
   });
@@ -131,7 +152,7 @@ export default function RecruitmentPage() {
     mutationFn: recruitmentAPI.delete,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['candidates'] });
-      setModal(null);
+      closeModal();
       toast.success('Candidature supprimée');
     },
     onError: (err) => toast.error(err?.message || 'Erreur'),
@@ -139,15 +160,32 @@ export default function RecruitmentPage() {
 
   /* ── Actions ── */
   const advance = (candidate, nextStage) => {
+    if (nextStage === 'HIRED') {
+      setHireModal(candidate);
+      setHireForm({ ...EMPTY_HIRE, hireDate: new Date().toISOString().split('T')[0] });
+      closeModal();
+      return;
+    }
     updateMutation.mutate({ id: candidate.id, data: { stage: nextStage } });
     const label = STAGES.find(s => s.key === nextStage)?.label;
     toast.success(`Candidat avancé → ${label}`);
-    setModal(null);
+    closeModal();
   };
 
-  const reject = (candidate) => {
-    if (!window.confirm(`Supprimer la candidature de ${candidate.name} ?`)) return;
-    deleteMutation.mutate(candidate.id);
+  const hireMutation = useMutation({
+    mutationFn: ({ id, data }) => recruitmentAPI.hire(id, data),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      setHireModal(null);
+      toast.success(`✅ ${res.message || 'Employé créé avec succès'}`);
+    },
+    onError: (err) => toast.error(err?.message || 'Erreur lors de la conversion'),
+  });
+
+  const reject = async (candidate) => {
+    const ok = await confirm({ title: 'Supprimer la candidature ?', message: `La candidature de ${candidate.name} sera définitivement supprimée.`, confirmLabel: 'Supprimer', variant: 'danger' });
+    if (ok) deleteMutation.mutate(candidate.id);
   };
 
   const handleCreate = (e) => {
@@ -194,13 +232,10 @@ export default function RecruitmentPage() {
         ))}
       </div>
 
-      {/* Loading state */}
-      {isLoading && (
-        <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Chargement…</div>
-      )}
-
       {/* KANBAN */}
-      {!isLoading && (
+      {isLoading ? (
+        <KanbanSkeleton cols={4} />
+      ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, alignItems: 'start' }}>
           {STAGES.map(stage => (
             <div key={stage.key}>
@@ -262,6 +297,12 @@ export default function RecruitmentPage() {
                         <ChevronRight size={11} /> {stage.nextLabel}
                       </button>
                     )}
+                    {stage.key === 'HIRED' && (
+                      <button className="btn btn--primary" style={{ width: '100%', fontSize: 11, padding: '5px 8px', justifyContent: 'center', marginTop: 4 }}
+                        onClick={e => { e.stopPropagation(); setHireModal(candidate); setHireForm({ ...EMPTY_HIRE, hireDate: new Date().toISOString().split('T')[0] }); }}>
+                        👤 Créer fiche employé
+                      </button>
+                    )}
                   </div>
                 ))}
 
@@ -288,9 +329,10 @@ export default function RecruitmentPage() {
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                 <label>Poste visé *</label>
-                <select value={form.position} onChange={e => set('position', e.target.value)}>
-                  {JOBS.map(j => <option key={j} value={j}>{j}</option>)}
-                </select>
+                <input list="jobs-list" value={form.position} onChange={e => set('position', e.target.value)} required placeholder="Saisir ou choisir un poste…" />
+                <datalist id="jobs-list">
+                  {JOBS.map(j => <option key={j} value={j} />)}
+                </datalist>
               </div>
               <div className="form-group">
                 <label>Email</label>
@@ -318,93 +360,176 @@ export default function RecruitmentPage() {
         </Modal>
       )}
 
-      {/* ── MODAL DÉTAIL CANDIDAT ────────────────────────────────── */}
+      {/* ── MODAL DÉTAIL / ÉDITION CANDIDAT ─────────────────────── */}
       {modal && modal !== 'create' && (
-        <Modal title={`👤 ${modal.name}`} onClose={() => setModal(null)} wide>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <Modal title={editMode ? `✏️ Modifier — ${modal.name}` : `👤 ${modal.name}`} onClose={closeModal} wide>
 
-            {/* Left — info */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--bg-hover)', borderRadius: 8 }}>
-                <Briefcase size={15} style={{ color: 'var(--text-muted)' }} />
-                <div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Poste visé</div>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>{modal.position}</div>
+          {editMode ? (
+            /* ── FORMULAIRE ÉDITION ── */
+            <div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label>Nom complet *</label>
+                  <input value={editForm.name} onChange={e => setE('name', e.target.value)} placeholder="Nom complet" />
+                </div>
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label>Poste visé *</label>
+                  <input list="jobs-list-edit" value={editForm.position} onChange={e => setE('position', e.target.value)} placeholder="Saisir ou choisir un poste…" />
+                  <datalist id="jobs-list-edit">
+                    {JOBS.map(j => <option key={j} value={j} />)}
+                  </datalist>
+                </div>
+                <div className="form-group">
+                  <label>Email</label>
+                  <input type="email" value={editForm.email} onChange={e => setE('email', e.target.value)} placeholder="email@example.com" />
+                </div>
+                <div className="form-group">
+                  <label>Téléphone</label>
+                  <input value={editForm.phone} onChange={e => setE('phone', e.target.value)} placeholder="06..." />
+                </div>
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label>Étape</label>
+                  <select value={editForm.stage || modal.stage} onChange={e => setE('stage', e.target.value)}>
+                    {STAGES.map(s => <option key={s.key} value={s.key}>{s.icon} {s.label}</option>)}
+                  </select>
+                </div>
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label>Note / Commentaire</label>
+                  <textarea value={editForm.note} onChange={e => setE('note', e.target.value)} rows={3} style={{ resize: 'vertical' }} placeholder="Observations…" />
                 </div>
               </div>
-
-              {modal.email && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg-hover)', borderRadius: 8 }}>
-                  <Mail size={13} style={{ color: 'var(--text-muted)' }} />
-                  <div style={{ overflow: 'hidden' }}>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Email</div>
-                    <div style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{modal.email}</div>
-                  </div>
-                </div>
-              )}
-              {modal.phone && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg-hover)', borderRadius: 8 }}>
-                  <Phone size={13} style={{ color: 'var(--text-muted)' }} />
-                  <div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Téléphone</div>
-                    <div style={{ fontSize: 12 }}>{modal.phone}</div>
-                  </div>
-                </div>
-              )}
-
-              {/* Stage indicator */}
-              <div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>Étape actuelle</div>
-                <div style={{ display: 'flex', gap: 4 }}>
-                  {STAGES.map(s => (
-                    <div key={s.key} style={{ flex: 1, textAlign: 'center', padding: '5px 3px', borderRadius: 6, background: modal.stage === s.key ? s.color + '22' : 'var(--bg-hover)', border: `1px solid ${modal.stage === s.key ? s.color : 'var(--border)'}`, fontSize: 10, color: modal.stage === s.key ? s.color : 'var(--text-muted)', fontWeight: modal.stage === s.key ? 700 : 400 }}>
-                      {s.icon}<br />{s.label}
-                    </div>
-                  ))}
-                </div>
+              <div className="form-actions">
+                <button className="btn btn--ghost" onClick={() => setEditMode(false)}>Annuler</button>
+                <button className="btn btn--primary" disabled={updateMutation.isPending || !editForm.name}
+                  onClick={() => updateMutation.mutate({ id: modal.id, data: editForm })}>
+                  {updateMutation.isPending ? 'Enregistrement…' : '💾 Enregistrer'}
+                </button>
               </div>
-
-              {modal.note && (
-                <div style={{ padding: '10px 14px', background: 'var(--bg-hover)', borderRadius: 8, fontSize: 13, color: 'var(--text-secondary)' }}>
-                  💬 {modal.note}
-                </div>
-              )}
             </div>
-
-            {/* Right — CV */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <CVUploader
-                candidateId={modal.id}
-                currentCv={modal.cvUrl}
-                onUploaded={(url) => updateCvInModal(url)}
-              />
-              {modal.cvUrl && (
-                <div style={{ borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)', flex: 1, minHeight: 200 }}>
-                  <iframe
-                    src={`${BASE_URL}${modal.cvUrl}`}
-                    style={{ width: '100%', height: 240, border: 'none', background: 'white' }}
-                    title="CV Preview"
-                  />
+          ) : (
+            /* ── VUE DÉTAIL ── */
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                {/* Left — info */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--bg-hover)', borderRadius: 8 }}>
+                    <Briefcase size={15} style={{ color: 'var(--text-muted)' }} />
+                    <div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Poste visé</div>
+                      <div style={{ fontSize: 14, fontWeight: 600 }}>{modal.position}</div>
+                    </div>
+                  </div>
+                  {modal.email && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg-hover)', borderRadius: 8 }}>
+                      <Mail size={13} style={{ color: 'var(--text-muted)' }} />
+                      <div style={{ overflow: 'hidden' }}>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Email</div>
+                        <div style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{modal.email}</div>
+                      </div>
+                    </div>
+                  )}
+                  {modal.phone && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg-hover)', borderRadius: 8 }}>
+                      <Phone size={13} style={{ color: 'var(--text-muted)' }} />
+                      <div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Téléphone</div>
+                        <div style={{ fontSize: 12 }}>{modal.phone}</div>
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>Étape actuelle</div>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      {STAGES.map(s => (
+                        <div key={s.key} style={{ flex: 1, textAlign: 'center', padding: '5px 3px', borderRadius: 6, background: modal.stage === s.key ? s.color + '22' : 'var(--bg-hover)', border: `1px solid ${modal.stage === s.key ? s.color : 'var(--border)'}`, fontSize: 10, color: modal.stage === s.key ? s.color : 'var(--text-muted)', fontWeight: modal.stage === s.key ? 700 : 400 }}>
+                          {s.icon}<br />{s.label}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {modal.note && (
+                    <div style={{ padding: '10px 14px', background: 'var(--bg-hover)', borderRadius: 8, fontSize: 13, color: 'var(--text-secondary)' }}>
+                      💬 {modal.note}
+                    </div>
+                  )}
                 </div>
-              )}
+
+                {/* Right — CV */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <CVUploader candidateId={modal.id} currentCv={modal.cvUrl} onUploaded={(url) => updateCvInModal(url)} />
+                  {modal.cvUrl && (
+                    <div style={{ borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)', flex: 1, minHeight: 200 }}>
+                      <iframe src={`${BASE_URL}${modal.cvUrl}`} style={{ width: '100%', height: 240, border: 'none', background: 'white' }} title="CV Preview" />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div style={{ display: 'flex', gap: 8, paddingTop: 16, marginTop: 4, borderTop: '1px solid var(--border)' }}>
+                <button className="btn btn--ghost" style={{ flex: 1 }} onClick={() => openEdit(modal)}>
+                  <Edit2 size={13} /> Modifier
+                </button>
+                {STAGES.find(s => s.key === modal.stage)?.next && (
+                  <button className="btn btn--primary" style={{ flex: 1 }}
+                    onClick={() => advance(modal, STAGES.find(s => s.key === modal.stage).next)}>
+                    <ChevronRight size={14} /> {STAGES.find(s => s.key === modal.stage).nextLabel}
+                  </button>
+                )}
+                {modal.stage === 'HIRED' && (
+                  <button className="btn btn--primary" style={{ flex: 1, background: '#10b981', borderColor: '#10b981' }}
+                    onClick={() => { setHireModal(modal); setHireForm({ ...EMPTY_HIRE, hireDate: new Date().toISOString().split('T')[0] }); closeModal(); }}>
+                    👤 Créer fiche employé
+                  </button>
+                )}
+                <button className="btn btn--ghost" style={{ flex: 1, color: '#ef4444', borderColor: '#ef444440' }}
+                  onClick={() => reject(modal)}>
+                  <X size={14} /> Supprimer
+                </button>
+              </div>
+            </>
+          )}
+        </Modal>
+      )}
+
+      {/* ── MODAL CONVERSION EN EMPLOYÉ ──────────────────────────── */}
+      {hireModal && (
+        <Modal title={`👤 Créer la fiche de ${hireModal.name}`} onClose={() => setHireModal(null)}>
+          <div style={{ marginBottom: 14, padding: '10px 14px', background: 'rgba(99,102,241,0.07)', borderRadius: 8, fontSize: 13 }}>
+            <strong>{hireModal.name}</strong> · {hireModal.position} · {hireModal.email || 'Pas d\'email'}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div className="form-group">
+              <label>Département *</label>
+              <select value={hireForm.department} onChange={e => setHireForm(f => ({ ...f, department: e.target.value }))}>
+                {['Direction','Ressources Humaines','Finance','CRM & Ventes','Production','Logistique','IT','Maintenance','Qualité'].map(d => <option key={d}>{d}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Type de contrat</label>
+              <select value={hireForm.contractType} onChange={e => setHireForm(f => ({ ...f, contractType: e.target.value }))}>
+                {['CDI','CDD','INTERIM','STAGE','FREELANCE'].map(c => <option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Salaire mensuel (DZD) *</label>
+              <input type="number" min="0" value={hireForm.salary} onChange={e => setHireForm(f => ({ ...f, salary: e.target.value }))} placeholder="0" />
+            </div>
+            <div className="form-group">
+              <label>Date d'embauche *</label>
+              <input type="date" value={hireForm.hireDate} onChange={e => setHireForm(f => ({ ...f, hireDate: e.target.value }))} />
             </div>
           </div>
-
-          {/* Actions */}
-          <div style={{ display: 'flex', gap: 8, paddingTop: 16, marginTop: 4, borderTop: '1px solid var(--border)' }}>
-            {STAGES.find(s => s.key === modal.stage)?.next && (
-              <button className="btn btn--primary" style={{ flex: 1 }}
-                onClick={() => advance(modal, STAGES.find(s => s.key === modal.stage).next)}>
-                <ChevronRight size={14} /> {STAGES.find(s => s.key === modal.stage).nextLabel}
-              </button>
-            )}
-            <button className="btn btn--ghost" style={{ flex: 1, color: '#ef4444', borderColor: '#ef444440' }}
-              onClick={() => reject(modal)}>
-              <X size={14} /> Supprimer
+          <div className="form-actions" style={{ marginTop: 16 }}>
+            <button className="btn btn--ghost" onClick={() => setHireModal(null)}>Annuler</button>
+            <button className="btn btn--primary" disabled={hireMutation.isPending || !hireForm.salary}
+              onClick={() => hireMutation.mutate({ id: hireModal.id, data: hireForm })}>
+              {hireMutation.isPending ? 'Création…' : '✅ Créer l\'employé'}
             </button>
           </div>
         </Modal>
       )}
+      {confirmModal}
     </div>
   );
 }

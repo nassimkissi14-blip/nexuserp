@@ -4,6 +4,7 @@ import { Plus, Cpu, Edit2, Trash2, CheckCircle, AlertTriangle, Zap } from 'lucid
 import toast from 'react-hot-toast';
 import apiClient from '../../api/client.js';
 import AnimatedPage from '../../components/ui/AnimatedPage.jsx';
+import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 import {
   PageHeader, Btn, Modal, FormGrid, FormActions,
   Field, Input, Select, EmptyState, Badge, Card, KpiCard, ProgressBar
@@ -11,11 +12,11 @@ import {
 
 /* ── API ─────────────────────────────────────── */
 const api = {
-  workcenters: ()      => apiClient.get('/production/workcenters').then(r => r.data),
-  createWC:    (d)     => apiClient.post('/production/workcenters', d).then(r => r.data),
-  updateWC:    (id, d) => apiClient.patch(`/production/workcenters/${id}`, d).then(r => r.data),
-  deleteWC:    (id)    => apiClient.delete(`/production/workcenters/${id}`).then(r => r.data),
-  orders:      ()      => apiClient.get('/production/orders', { params: { status: 'IN_PROGRESS' } }).then(r => r.data),
+  workcenters: ()      => apiClient.get('/production/workcenters'),
+  createWC:    (d)     => apiClient.post('/production/workcenters', d),
+  updateWC:    (id, d) => apiClient.patch(`/production/workcenters/${id}`, d),
+  deleteWC:    (id)    => apiClient.delete(`/production/workcenters/${id}`),
+  orders:      ()      => apiClient.get('/production/orders', { params: { status: 'IN_PROGRESS' } }),
 };
 
 const WC_STATUS = {
@@ -143,6 +144,7 @@ function WCCard({ wc, activeOrders, onEdit, onDelete }) {
 /* ── MAIN PAGE ──────────────────────────────── */
 export default function WorkCentersPage() {
   const qc = useQueryClient();
+  const { confirm, modal: confirmModal } = useConfirm();
   const [modal, setModal] = useState(null);
 
   const inv = () => qc.invalidateQueries({ queryKey: ['prod-wc'] });
@@ -150,8 +152,8 @@ export default function WorkCentersPage() {
   const { data: wcRes, isLoading } = useQuery({ queryKey: ['prod-wc'],    queryFn: api.workcenters });
   const { data: ordersRes }        = useQuery({ queryKey: ['prod-orders'], queryFn: api.orders });
 
-  const workcenters  = wcRes    || [];
-  const activeOrders = ordersRes || [];
+  const workcenters  = wcRes?.data    || [];
+  const activeOrders = ordersRes?.data || [];
 
   const createWC = useMutation({
     mutationFn: api.createWC,
@@ -231,8 +233,9 @@ export default function WorkCentersPage() {
                 wc={wc}
                 activeOrders={activeOrders}
                 onEdit={() => setModal({ type: 'edit', data: wc })}
-                onDelete={() => {
-                  if (confirm(`Supprimer le poste "${wc.name}" ?`)) deleteWC.mutate(wc.id);
+                onDelete={async () => {
+                  const ok = await confirm({ title: `Supprimer le poste "${wc.name}" ?`, confirmLabel: 'Supprimer', variant: 'danger' });
+                  if (ok) deleteWC.mutate(wc.id);
                 }}
               />
             ))}
@@ -252,6 +255,7 @@ export default function WorkCentersPage() {
           />
         )}
       </div>
+      {confirmModal}
     </AnimatedPage>
   );
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { Download, TrendingUp, TrendingDown, RefreshCw } from 'lucide-react';
+import { TrendingUp, TrendingDown, RefreshCw, Table2, BarChart2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import AnimatedPage from '../../components/ui/AnimatedPage.jsx';
 import { PageHeader, Btn } from '../../components/ui/DesignSystem.jsx';
@@ -14,6 +14,15 @@ const REPORTS = [
   { key: 'balance',  label: 'Bilan patrimonial',    icon: '⚖️', desc: 'Actif, passif et capitaux propres' },
   { key: 'aging',    label: 'Balance âgée clients', icon: '🕐', desc: 'Créances par ancienneté' },
 ];
+
+const PERIOD_OPTIONS = [
+  { value: 'today',    label: "Aujourd'hui" },
+  { value: 'month',    label: 'Ce mois'     },
+  { value: 'semester', label: 'Semestre'    },
+  { value: 'year',     label: 'Cette année' },
+];
+
+const MONTHS_FR = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
 
 function ChartTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
@@ -30,9 +39,45 @@ function ChartTooltip({ active, payload, label }) {
   );
 }
 
+function DetailTable({ columns, rows, colorFn }) {
+  return (
+    <div style={{ overflowX: 'auto', marginTop: 16 }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <thead>
+          <tr style={{ borderBottom: '2px solid var(--border)' }}>
+            {columns.map(c => (
+              <th key={c.key} style={{ padding: '10px 12px', textAlign: c.align || 'left', color: 'var(--text-muted)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                {c.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={i} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)' }}>
+              {columns.map(c => {
+                const val = row[c.key];
+                const color = colorFn ? colorFn(c.key, val, row) : undefined;
+                return (
+                  <td key={c.key} style={{ padding: '10px 12px', textAlign: c.align || 'left', color: color || 'var(--text-primary)', fontWeight: c.bold ? 700 : 400 }}>
+                    {c.format ? c.format(val) : val}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function FinanceReportsPage() {
   const [activeReport, setActiveReport] = useState('pl');
   const [period, setPeriod] = useState('year');
+  const [showDetail, setShowDetail] = useState(false);
+
+  const currentMonth = new Date().getMonth(); // 0-based
 
   const { data: finData, isLoading, refetch } = useQuery({
     queryKey: ['finance-summary'],
@@ -46,15 +91,14 @@ export default function FinanceReportsPage() {
   const balance  = finData?.balance   || {};
   const kpis     = finData?.kpis      || {};
 
-  const plFiltered = period === 'year' ? pl :
-    period === 'semester' ? pl.slice(0, 6) :
-    period === 'q1' ? pl.slice(0, 3) :
-    period === 'q2' ? pl.slice(3, 6) : pl;
+  const filterSlice = (arr) => {
+    if (period === 'today' || period === 'month') return arr.slice(currentMonth, currentMonth + 1);
+    if (period === 'semester') return arr.slice(0, 6);
+    return arr; // year
+  };
 
-  const cfFiltered = period === 'year' ? cashflow :
-    period === 'semester' ? cashflow.slice(0, 6) :
-    period === 'q1' ? cashflow.slice(0, 3) :
-    period === 'q2' ? cashflow.slice(3, 6) : cashflow;
+  const plFiltered = filterSlice(pl);
+  const cfFiltered = filterSlice(cashflow);
 
   if (isLoading) return (
     <AnimatedPage>
@@ -70,16 +114,26 @@ export default function FinanceReportsPage() {
       <div className="erp-page">
         <PageHeader icon="📊" title="Rapports financiers" subtitle="Analysez la santé financière de votre entreprise"
           actions={
-            <div style={{ display: 'flex', gap: 8 }}>
-              <select value={period} onChange={e => setPeriod(e.target.value)}
-                style={{ padding: '7px 12px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 12 }}>
-                <option value="year">Année en cours</option>
-                <option value="q1">1er trimestre</option>
-                <option value="q2">2e trimestre</option>
-                <option value="semester">Semestre</option>
-              </select>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {/* Period filter buttons */}
+              <div style={{ display: 'flex', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                {PERIOD_OPTIONS.map(opt => (
+                  <button key={opt.value} onClick={() => setPeriod(opt.value)}
+                    style={{
+                      padding: '7px 14px', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 500,
+                      background: period === opt.value ? '#6366f1' : 'transparent',
+                      color: period === opt.value ? 'white' : 'var(--text-muted)',
+                      borderRight: '1px solid var(--border)',
+                      transition: 'all 0.15s',
+                    }}>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <Btn variant={showDetail ? 'primary' : 'secondary'} icon={showDetail ? <BarChart2 size={14} /> : <Table2 size={14} />} onClick={() => setShowDetail(d => !d)}>
+                {showDetail ? 'Graphique' : 'Détail'}
+              </Btn>
               <Btn variant="secondary" icon={<RefreshCw size={14} />} onClick={() => refetch()}>Actualiser</Btn>
-              <Btn variant="secondary" icon={<Download size={14} />}>Exporter PDF</Btn>
             </div>
           }
         />
@@ -117,16 +171,29 @@ export default function FinanceReportsPage() {
           ))}
         </div>
 
-        {/* Chart area */}
+        {/* Chart / detail area */}
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '22px 24px' }}>
 
           {activeReport === 'pl' && (
             <>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 18 }}>Compte de résultat — Évolution mensuelle</div>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 18 }}>
+                Compte de résultat — {PERIOD_OPTIONS.find(o => o.value === period)?.label}
+              </div>
               {plFiltered.every(m => m.revenue === 0 && m.expenses === 0) ? (
                 <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)', fontSize: 13 }}>
                   Aucune donnée financière pour cette période.<br />Créez des factures et des entrées de trésorerie pour voir les graphiques.
                 </div>
+              ) : showDetail ? (
+                <DetailTable
+                  columns={[
+                    { key: 'month', label: 'Mois' },
+                    { key: 'revenue',  label: 'Produits',  align: 'right', format: fmtDZD },
+                    { key: 'expenses', label: 'Charges',   align: 'right', format: fmtDZD },
+                    { key: 'profit',   label: 'Résultat',  align: 'right', format: fmtDZD, bold: true },
+                  ]}
+                  rows={plFiltered}
+                  colorFn={(key, val) => key === 'profit' ? (val >= 0 ? '#10b981' : '#ef4444') : undefined}
+                />
               ) : (
                 <>
                   <ResponsiveContainer width="100%" height={300}>
@@ -159,11 +226,24 @@ export default function FinanceReportsPage() {
 
           {activeReport === 'cashflow' && (
             <>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 18 }}>Flux de trésorerie — Entrées vs Sorties</div>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 18 }}>
+                Flux de trésorerie — {PERIOD_OPTIONS.find(o => o.value === period)?.label}
+              </div>
               {cfFiltered.every(m => m.inflow === 0 && m.outflow === 0) ? (
                 <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)', fontSize: 13 }}>
                   Aucune entrée de trésorerie trouvée.<br />Créez des entrées dans le module Trésorerie pour voir les flux.
                 </div>
+              ) : showDetail ? (
+                <DetailTable
+                  columns={[
+                    { key: 'month',   label: 'Mois' },
+                    { key: 'inflow',  label: 'Entrées',  align: 'right', format: fmtDZD },
+                    { key: 'outflow', label: 'Sorties',  align: 'right', format: fmtDZD },
+                    { key: 'net',     label: 'Flux net', align: 'right', format: fmtDZD, bold: true },
+                  ]}
+                  rows={cfFiltered}
+                  colorFn={(key, val) => key === 'net' ? (val >= 0 ? '#10b981' : '#ef4444') : undefined}
+                />
               ) : (
                 <ResponsiveContainer width="100%" height={300}>
                   <LineChart data={cfFiltered} margin={{ top: 4, right: 10, bottom: 0, left: 0 }}>
@@ -183,20 +263,36 @@ export default function FinanceReportsPage() {
           {activeReport === 'balance' && (
             <>
               <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 18 }}>Bilan — Actifs et engagements</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-                {[
-                  { label: 'Valeur des stocks',    value: balance.stockValue || 0,        color: '#6366f1', icon: '📦', desc: 'Inventaire au prix d\'achat' },
-                  { label: 'Créances clients',      value: balance.receivables || 0,       color: '#f59e0b', icon: '💳', desc: 'Factures non encaissées' },
-                  { label: 'Trésorerie nette',      value: balance.treasuryBalance || 0,   color: '#10b981', icon: '💰', desc: 'Solde entrées–sorties' },
-                ].map((item, i) => (
-                  <div key={i} style={{ padding: '20px', background: item.color + '10', border: `1px solid ${item.color}25`, borderRadius: 12, textAlign: 'center' }}>
-                    <div style={{ fontSize: 32, marginBottom: 10 }}>{item.icon}</div>
-                    <div style={{ fontSize: 22, fontWeight: 800, color: item.color }}>{fmtDZD(item.value)}</div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginTop: 6 }}>{item.label}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{item.desc}</div>
-                  </div>
-                ))}
-              </div>
+              {showDetail ? (
+                <DetailTable
+                  columns={[
+                    { key: 'label', label: 'Poste' },
+                    { key: 'value', label: 'Montant', align: 'right', format: fmtDZD, bold: true },
+                    { key: 'desc',  label: 'Description' },
+                  ]}
+                  rows={[
+                    { label: 'Valeur des stocks',   value: balance.stockValue || 0,       desc: 'Inventaire au prix d\'achat', color: '#6366f1' },
+                    { label: 'Créances clients',     value: balance.receivables || 0,      desc: 'Factures non encaissées',     color: '#f59e0b' },
+                    { label: 'Trésorerie nette',     value: balance.treasuryBalance || 0,  desc: 'Solde entrées–sorties',       color: '#10b981' },
+                  ]}
+                  colorFn={(key, val, row) => key === 'value' ? (val >= 0 ? undefined : '#ef4444') : undefined}
+                />
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+                  {[
+                    { label: 'Valeur des stocks',    value: balance.stockValue || 0,        color: '#6366f1', icon: '📦', desc: 'Inventaire au prix d\'achat' },
+                    { label: 'Créances clients',      value: balance.receivables || 0,       color: '#f59e0b', icon: '💳', desc: 'Factures non encaissées' },
+                    { label: 'Trésorerie nette',      value: balance.treasuryBalance || 0,   color: '#10b981', icon: '💰', desc: 'Solde entrées–sorties' },
+                  ].map((item, i) => (
+                    <div key={i} style={{ padding: '20px', background: item.color + '10', border: `1px solid ${item.color}25`, borderRadius: 12, textAlign: 'center' }}>
+                      <div style={{ fontSize: 32, marginBottom: 10 }}>{item.icon}</div>
+                      <div style={{ fontSize: 22, fontWeight: 800, color: item.color }}>{fmtDZD(item.value)}</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginTop: 6 }}>{item.label}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{item.desc}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
           )}
 
@@ -207,6 +303,16 @@ export default function FinanceReportsPage() {
                 <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)', fontSize: 13 }}>
                   Aucune créance client en suspens.<br />Toutes les factures sont réglées ou il n'y en a pas encore.
                 </div>
+              ) : showDetail ? (
+                <DetailTable
+                  columns={[
+                    { key: 'range',  label: 'Tranche' },
+                    { key: 'count',  label: 'Factures', align: 'right' },
+                    { key: 'amount', label: 'Montant',  align: 'right', format: fmtDZD, bold: true },
+                  ]}
+                  rows={aging}
+                  colorFn={(key, val, row) => key === 'amount' ? row.color : undefined}
+                />
               ) : (
                 <>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 24 }}>

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import prisma from '../lib/prisma.js';
 import bcrypt from 'bcryptjs';
 import { authenticate, authorize } from '../middleware/auth.middleware.js';
+import { sendApprovalEmail, sendRejectionEmail } from '../services/email.service.js';
 
 const router = Router();
 
@@ -54,7 +55,7 @@ router.post('/:id/approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'DIR
       },
     });
 
-    // Notify the approved user
+    // Notify the approved user (in-app)
     const notif = await prisma.notification.create({
       data: {
         userId:  user.id,
@@ -66,16 +67,33 @@ router.post('/:id/approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'DIR
     });
     io?.to(`user:${user.id}`).emit('notification:new', notif);
 
+    // Send approval email (non-blocking)
+    const company = await prisma.company.findUnique({ where: { id: req.companyId }, select: { name: true } });
+    sendApprovalEmail({ to: user.email, firstName: user.firstName, companyName: company?.name })
+      .catch(err => console.error('[email] approval email failed:', err.message));
+
     res.json({ success: true, message: 'Utilisateur approuvé et employé créé' });
   } catch (error) { next(error); }
 });
 
-// POST /users/:id/reject — delete pending user
+// POST /users/:id/reject — delete pending user + send rejection email
 router.post('/:id/reject', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'DIRECTOR', 'MANAGER'), async (req, res, next) => {
   try {
     const user = await prisma.user.findFirst({ where: { id: req.params.id, companyId: req.companyId, isActive: false } });
     if (!user) return res.status(404).json({ success: false, message: 'Utilisateur introuvable' });
+
+    const { reason } = req.body;
+
+    // Capture data before deletion
+    const { email, firstName } = user;
+    const company = await prisma.company.findUnique({ where: { id: req.companyId }, select: { name: true } });
+
     await prisma.user.delete({ where: { id: user.id } });
+
+    // Send rejection email (non-blocking)
+    sendRejectionEmail({ to: email, firstName, companyName: company?.name, reason })
+      .catch(err => console.error('[email] rejection email failed:', err.message));
+
     res.json({ success: true, message: 'Demande refusée et compte supprimé' });
   } catch (error) { next(error); }
 });
