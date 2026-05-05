@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const BASE_URL = (import.meta.env.VITE_API_URL)
-  || `http://${window.location.hostname}:3001/api/v1`;
+  || 'https://nexuserp-pupi.onrender.com/api/v1';
 
 const apiClient = axios.create({
   baseURL: BASE_URL,

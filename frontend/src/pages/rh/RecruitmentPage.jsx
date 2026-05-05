@@ -7,7 +7,7 @@ import toast from 'react-hot-toast';
 import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
 
 /* ─── Config ──────────────────────────────────────────────────── */
-const BASE_URL = import.meta.env.VITE_API_URL?.replace('/api/v1', '') || 'http://localhost:3001';
+const BASE_URL = import.meta.env.VITE_API_URL?.replace('/api/v1', '') || 'https://nexuserp-pupi.onrender.com';
 
 const STAGES = [
   { key: 'APPLIED',   label: 'Candidatures', color: '#6366f1', icon: '📨', next: 'INTERVIEW', nextLabel: '→ Entretien' },

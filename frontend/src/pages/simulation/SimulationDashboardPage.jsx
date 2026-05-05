@@ -30,7 +30,7 @@ Sub SendKPIToNexus(sessionId As String, simTime As Double, _
     Dim http As Object
     Set http = CreateObject("MSXML2.XMLHTTP")
     Dim url As String
-    url = "http://YOUR_SERVER:3001/api/v1/iot/simulations/" & sessionId & "/events"
+    url = "https://nexuserp-pupi.onrender.com/api/v1/iot/simulations/" & sessionId & "/events"
     Dim body As String
     body = "{""eventType"":""KPI_UPDATE"",""simTime"":" & simTime & _
            ",""data"":{""throughput"":" & throughput & _
@@ -55,7 +55,7 @@ METHOD sendKPIsToNexus
           ',"data":{"throughput":' + throughputSensor.value.toString +
           ',"avgCycleTime":' + cycleTimeSensor.mean.toString +
           ',"wip":' + wipCounter.value.toString + '}}';
-  http.url := 'http://YOUR_SERVER:3001/api/v1/iot/simulations/' + sessionId + '/events';
+  http.url := 'https://nexuserp-pupi.onrender.com/api/v1/iot/simulations/' + sessionId + '/events';
   http.method := HTTPPost;
   http.requestHeader['Content-Type'] := 'application/json';
   http.requestHeader['Authorization'] := token;
@@ -71,7 +71,7 @@ from watchdog.events import FileSystemEventHandler
 
 SESSION_ID = "YOUR_SESSION_ID"
 TOKEN      = "Bearer YOUR_TOKEN"
-SERVER     = "http://YOUR_SERVER:3001"
+SERVER     = "https://nexuserp-pupi.onrender.com"
 CSV_PATH   = r"C:\\Arena\\Output\\kpis.csv"
 
 def post_kpi(data, sim_time=None):

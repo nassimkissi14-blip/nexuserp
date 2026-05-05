@@ -8,7 +8,7 @@ import { useNotificationsStore } from '../store/index.js';
 import { useSimulationStore } from '../store/simulationStore.js';
 
 const SOCKET_URL = (import.meta.env.VITE_SOCKET_URL)
-  || `http://${window.location.hostname}:3001`;
+  || 'https://nexuserp-pupi.onrender.com';
 let socketInstance = null;
 
 export const useSocket = () => {
