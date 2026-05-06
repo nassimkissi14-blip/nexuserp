@@ -2,6 +2,15 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { authAPI, modulesAPI, notificationsAPI, messagesAPI } from '../api/client.js';
 
+// Apply saved theme immediately (before first React render) to avoid flash
+;(() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem('nexuserp-theme') || '{}');
+    const t = saved?.state?.theme || 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+  } catch {}
+})();
+
 // ─── AUTH STORE ───────────────────────────────
 export const useAuthStore = create(
   persist(
