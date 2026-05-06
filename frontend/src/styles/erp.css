@@ -70,6 +70,38 @@
   --spring:          all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
+/* ─── LIGHT MODE OVERRIDES ───────────────────────── */
+html[data-theme="light"] {
+  --bg-primary:      #f0f4f8;
+  --bg-secondary:    #e8edf5;
+  --bg-card:         #ffffff;
+  --bg-card-hover:   #f8fafc;
+  --bg-elevated:     #ffffff;
+  --bg-sidebar:      #ffffff;
+  --bg-hover:        rgba(99,102,241,0.07);
+
+  --border:          rgba(0,0,0,0.08);
+  --border-light:    rgba(0,0,0,0.13);
+  --border-focus:    rgba(99,102,241,0.5);
+
+  --text-primary:    #0f172a;
+  --text-secondary:  #475569;
+  --text-muted:      #94a3b8;
+  --text-accent:     #6366f1;
+
+  --shadow-sm:    0 2px 8px rgba(0,0,0,0.06);
+  --shadow:       0 8px 32px rgba(0,0,0,0.10);
+  --shadow-lg:    0 20px 60px rgba(0,0,0,0.13);
+  --shadow-glow:  0 0 30px rgba(99,102,241,0.12);
+  --shadow-card:  0 1px 0 rgba(255,255,255,0.9) inset, 0 4px 16px rgba(0,0,0,0.07);
+}
+
+html[data-theme="light"] body::before {
+  background:
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(99,102,241,0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 110%, rgba(139,92,246,0.04) 0%, transparent 60%);
+}
+
 /* ─── BASE RESET ─────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useAuthStore } from './store/index.js';
+import { useAuthStore, useThemeStore } from './store/index.js';
 import { useSocket } from './hooks/useSocket.js';
 
 import MainLayout from './components/layout/MainLayout.jsx';
@@ -182,6 +182,9 @@ function AppInit({ setShowOnboarding, onLogin }) {
 export default function App() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const { user } = useAuthStore();
+  const { theme, applyTheme } = useThemeStore();
+
+  useEffect(() => { applyTheme(theme); }, [theme]);
 
   const completeOnboarding = () => {
     if (user?.id) {

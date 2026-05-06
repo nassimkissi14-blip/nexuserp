@@ -79,6 +79,24 @@ export const useAuthStore = create(
   )
 );
 
+// ─── THEME STORE ──────────────────────────────
+export const useThemeStore = create(
+  persist(
+    (set) => ({
+      theme: 'dark',
+      toggleTheme: () => set((s) => {
+        const next = s.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        return { theme: next };
+      }),
+      applyTheme: (theme) => {
+        document.documentElement.setAttribute('data-theme', theme);
+      },
+    }),
+    { name: 'nexuserp-theme', partialize: (s) => ({ theme: s.theme }) }
+  )
+);
+
 // ─── MODULES STORE ────────────────────────────
 export const useModulesStore = create((set, get) => ({
   modules: [],

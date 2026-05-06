@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Eye, EyeOff, Clock, Mail } from 'lucide-react';
-import { useAuthStore } from '../store/index.js';
+import { Eye, EyeOff, Clock, Mail, Sun, Moon } from 'lucide-react';
+import { useAuthStore, useThemeStore } from '../store/index.js';
 
 export default function LoginPage() {
   const [email, setEmail]       = useState('');
@@ -10,7 +10,9 @@ export default function LoginPage() {
   const [error, setError]       = useState('');
   const [pending, setPending]   = useState(false);
   const { login, isLoading }    = useAuthStore();
+  const { theme, toggleTheme }  = useThemeStore();
   const navigate = useNavigate();
+  const isDark = theme === 'dark';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -27,7 +29,28 @@ export default function LoginPage() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)', position: 'relative' }}>
+
+      {/* Theme toggle button */}
+      <button
+        onClick={toggleTheme}
+        title={isDark ? 'Passer en mode clair' : 'Passer en mode sombre'}
+        style={{
+          position: 'fixed', top: 20, right: 20,
+          width: 42, height: 42, borderRadius: '50%',
+          border: '1px solid var(--border-light)',
+          background: 'var(--bg-card)',
+          color: 'var(--text-secondary)',
+          cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: 'var(--shadow-sm)',
+          transition: 'var(--transition)',
+          zIndex: 1000,
+        }}
+      >
+        {isDark ? <Sun size={18} /> : <Moon size={18} />}
+      </button>
+
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '40px', width: '100%', maxWidth: '420px' }}>
 
         <h1 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '8px', color: 'var(--accent-primary)' }}>NexusERP</h1>
