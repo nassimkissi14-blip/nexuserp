@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Eye, EyeOff, Clock, Mail, Sun, Moon } from 'lucide-react';
-import { useAuthStore, useThemeStore } from '../store/index.js';
+import { useAuthStore } from '../store/index.js';
+import { useTheme } from '../context/ThemeContext.jsx';
 
 export default function LoginPage() {
   const [email, setEmail]       = useState('');
@@ -10,9 +11,9 @@ export default function LoginPage() {
   const [error, setError]       = useState('');
   const [pending, setPending]   = useState(false);
   const { login, isLoading }    = useAuthStore();
-  const { theme, toggleTheme }  = useThemeStore();
+  const { darkMode, toggle }    = useTheme();
   const navigate = useNavigate();
-  const isDark = theme === 'dark';
+  const isDark = darkMode;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -33,7 +34,7 @@ export default function LoginPage() {
 
       {/* Theme toggle button */}
       <button
-        onClick={toggleTheme}
+        onClick={toggle}
         title={isDark ? 'Passer en mode clair' : 'Passer en mode sombre'}
         style={{
           position: 'fixed', top: 20, right: 20,

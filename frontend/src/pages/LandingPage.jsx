@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Sun, Moon } from 'lucide-react';
-import { useThemeStore } from '../store/index.js';
+import { useTheme } from '../context/ThemeContext.jsx';
 
 const MODULES = [
   { icon: '👥', label: 'Ressources Humaines', desc: 'Employés, congés, paie, recrutement, évaluations' },
@@ -21,8 +21,8 @@ const STATS = [
 ];
 
 export default function LandingPage() {
-  const { theme, toggleTheme } = useThemeStore();
-  const isDark = theme === 'dark';
+  const { darkMode, toggle } = useTheme();
+  const isDark = darkMode;
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontFamily: "'Inter', sans-serif", overflowX: 'hidden' }}>
@@ -43,7 +43,7 @@ export default function LandingPage() {
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           {/* Theme toggle */}
           <button
-            onClick={toggleTheme}
+            onClick={toggle}
             title={isDark ? 'Mode clair' : 'Mode sombre'}
             style={{
               width: 38, height: 38, borderRadius: '50%',

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useLayoutEffect } from 'react';
 
 const ThemeContext = createContext();
 
@@ -8,7 +8,7 @@ export function ThemeProvider({ children }) {
     return saved ? saved === 'dark' : true; // dark par défaut
   });
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     localStorage.setItem('nexuserp_theme', darkMode ? 'dark' : 'light');
 
     // Applique les variables CSS globalement
