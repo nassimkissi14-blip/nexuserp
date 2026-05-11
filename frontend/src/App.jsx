@@ -228,9 +228,11 @@ export default function App() {
               {/* Dept stats — accessible by route param */}
               <Route path="/stats/:dept" element={<DeptDashboardPage />} />
 
+              {/* Demandes en attente — hors ModuleGuard (accessible même si RH désactivé) */}
+              <Route path="/rh/pending" element={<PendingApprovalsPage />} />
+
               {/* ── RH ── */}
               <Route element={<ModuleGuard slug="rh" />}>
-                <Route path="/rh/pending" element={<PendingApprovalsPage />} />
                 <Route path="/rh/employees" element={<EmployeesPage />} />
                 <Route path="/rh/employes" element={<EmployeesPage />} />
                 <Route path="/rh/leaves" element={<LeavesPage />} />
