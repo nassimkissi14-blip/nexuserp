@@ -104,93 +104,88 @@ router.get('/overview', async (req, res, next) => {
     /* ══════════════════════════════════════
        BLOCK B — 30-day daily sparklines
     ══════════════════════════════════════ */
-    const sparklines = {};
-    // Revenue sparkline — last 30 days
-    const sparkRevData = [];
-    for (let i = 29; i >= 0; i--) {
-      const d = new Date(now); d.setDate(now.getDate() - i);
-      const dStart = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0);
-      const dEnd   = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59);
-      const dayOrders = await prisma.order.aggregate({
-        where: { companyId, orderDate: { gte: dStart, lte: dEnd }, status: { not: 'CANCELLED' } },
-        _sum: { totalAmount: true },
-      });
-      sparkRevData.push({ d: i, v: Math.round(dayOrders._sum.totalAmount || 0) });
-    }
-    sparklines.revenue = sparkRevData;
+    /* ── Sparklines: fetch ALL orders/prod in 30 days, group in JS ── */
+    const [sparkOrdersRaw, sparkProdRaw] = await Promise.all([
+      prisma.order.findMany({
+        where: { companyId, orderDate: { gte: thirtyDaysAgo }, status: { not: 'CANCELLED' } },
+        select: { orderDate: true, totalAmount: true },
+      }),
+      prisma.productionOrder.findMany({
+        where: { companyId, status: 'COMPLETED', updatedAt: { gte: thirtyDaysAgo } },
+        select: { updatedAt: true, producedQty: true },
+      }),
+    ]);
 
-    // Production sparkline — last 30 days produced qty
-    const sparkProdData = [];
-    for (let i = 29; i >= 0; i--) {
-      const d = new Date(now); d.setDate(now.getDate() - i);
-      const dStart = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0);
-      const dEnd   = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59);
-      const dayProd = await prisma.productionOrder.aggregate({
-        where: { companyId, status: 'COMPLETED', updatedAt: { gte: dStart, lte: dEnd } },
-        _sum: { producedQty: true },
-      });
-      sparkProdData.push({ d: i, v: Math.round(dayProd._sum.producedQty || 0) });
-    }
-    sparklines.production = sparkProdData;
+    const dayKey = (d) => {
+      const t = new Date(d); t.setHours(0,0,0,0);
+      return Math.floor((now - t) / 86400000);
+    };
+    const revByDay  = {};
+    const prodByDay = {};
+    sparkOrdersRaw.forEach(o => { const k = dayKey(o.orderDate);  revByDay[k]  = (revByDay[k]  || 0) + o.totalAmount; });
+    sparkProdRaw.forEach(o  => { const k = dayKey(o.updatedAt);  prodByDay[k] = (prodByDay[k] || 0) + (o.producedQty || 0); });
+
+    const sparklines = {
+      revenue:    Array.from({length:30},(_,i)=>({ d:29-i, v: Math.round(revByDay[29-i]  || 0) })),
+      production: Array.from({length:30},(_,i)=>({ d:29-i, v: Math.round(prodByDay[29-i] || 0) })),
+    };
 
     /* ══════════════════════════════════════
        BLOCK C — 6-month trend series
     ══════════════════════════════════════ */
-    const revenueTrend = [];
-    for (let i = 5; i >= 0; i--) {
-      const start = mStart(curY, curM - i);
-      const end   = mEnd(curY, curM - i);
-      const [deliv, allOrd, payroll] = await Promise.all([
-        prisma.order.aggregate({ where: { companyId, orderDate: { gte: start, lte: end }, status: { not: 'CANCELLED' } }, _sum: { totalAmount: true } }),
-        prisma.order.aggregate({ where: { companyId, orderDate: { gte: start, lte: end }, status: { not: 'CANCELLED' } }, _sum: { totalAmount: true }, _count: true }),
-        prisma.payroll.aggregate({ where: { companyId, paidAt: { gte: start, lte: end } }, _sum: { netSalary: true } }),
-      ]);
-      const rev  = Math.round(deliv._sum.totalAmount || 0);
-      const cost = Math.round(payroll._sum.netSalary || 0);
-      revenueTrend.push({
-        month:   mLabel(curY, curM - i),
-        revenue: rev,
-        cost,
-        profit:  rev - cost,
-        orders:  allOrd._count,
-        gmv:     Math.round(allOrd._sum.totalAmount || 0),
-      });
-    }
+    /* ── 6-month trends: single queries + JS grouping ── */
+    const [orders6m, prodOrders6m, payroll6m] = await Promise.all([
+      prisma.order.findMany({
+        where: { companyId, orderDate: { gte: sixMonthsAgo }, status: { not: 'CANCELLED' } },
+        select: { orderDate: true, totalAmount: true, status: true },
+      }),
+      prisma.productionOrder.findMany({
+        where: { companyId, createdAt: { gte: sixMonthsAgo } },
+        select: { createdAt: true, status: true, quantity: true, producedQty: true },
+      }),
+      prisma.payroll.findMany({
+        where: { companyId, paidAt: { gte: sixMonthsAgo } },
+        select: { paidAt: true, netSalary: true },
+      }),
+    ]);
 
-    /* ── production trend ── */
-    const productionTrend = [];
-    for (let i = 5; i >= 0; i--) {
-      const start = mStart(curY, curM - i);
-      const end   = mEnd(curY, curM - i);
-      const orders = await prisma.productionOrder.findMany({
-        where: { companyId, createdAt: { gte: start, lte: end } },
-        select: { status: true, quantity: true, producedQty: true },
-      });
-      const planned  = orders.reduce((s, o) => s + (o.quantity || 0), 0);
-      const produced = orders.reduce((s, o) => s + (o.producedQty || 0), 0);
-      productionTrend.push({
-        month:      mLabel(curY, curM - i),
-        planned,
-        produced,
-        completed:  orders.filter(o => o.status === 'COMPLETED').length,
+    const mKey = (d) => { const t = new Date(d); return `${t.getFullYear()}-${t.getMonth()}`; };
+
+    const revenueTrend = Array.from({length: 6}, (_, i) => {
+      const raw = curM - 5 + i;
+      const my = curY + Math.floor(raw / 12); const mm = ((raw % 12) + 12) % 12;
+      const key = `${my}-${mm}`;
+      const mo = orders6m.filter(o => mKey(o.orderDate) === key);
+      const mp = payroll6m.filter(p => mKey(p.paidAt) === key);
+      const rev = Math.round(mo.reduce((s, o) => s + o.totalAmount, 0));
+      const cost = Math.round(mp.reduce((s, p) => s + (p.netSalary || 0), 0));
+      return { month: mLabel(my, mm), revenue: rev, cost, profit: rev - cost, orders: mo.length, gmv: rev };
+    });
+
+    const productionTrend = Array.from({length: 6}, (_, i) => {
+      const raw = curM - 5 + i;
+      const my = curY + Math.floor(raw / 12); const mm = ((raw % 12) + 12) % 12;
+      const ords = prodOrders6m.filter(o => mKey(o.createdAt) === `${my}-${mm}`);
+      const planned = ords.reduce((s, o) => s + (o.quantity || 0), 0);
+      const produced = ords.reduce((s, o) => s + (o.producedQty || 0), 0);
+      return {
+        month: mLabel(my, mm), planned, produced,
+        completed: ords.filter(o => o.status === 'COMPLETED').length,
         efficiency: planned > 0 ? +(produced / planned * 100).toFixed(1) : 0,
-        downtime:   orders.filter(o => o.status === 'PAUSED').length * 8, // est. hours
-      });
-    }
+        downtime: ords.filter(o => o.status === 'PAUSED').length * 8,
+      };
+    });
 
-    /* ── stacked orders-by-status per month ── */
     const ORDER_STATUSES = ['DRAFT', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED'];
-    const stackedOrders = [];
-    for (let i = 5; i >= 0; i--) {
-      const start = mStart(curY, curM - i);
-      const end   = mEnd(curY, curM - i);
-      const row = { month: mLabel(curY, curM - i) };
-      for (const st of ORDER_STATUSES) {
-        const cnt = await prisma.order.count({ where: { companyId, orderDate: { gte: start, lte: end }, status: st } });
-        row[st] = cnt;
-      }
-      stackedOrders.push(row);
-    }
+    const stackedOrders = Array.from({length: 6}, (_, i) => {
+      const raw = curM - 5 + i;
+      const my = curY + Math.floor(raw / 12); const mm = ((raw % 12) + 12) % 12;
+      const key = `${my}-${mm}`;
+      const mo = orders6m.filter(o => mKey(o.orderDate) === key);
+      const row = { month: mLabel(my, mm) };
+      ORDER_STATUSES.forEach(st => { row[st] = mo.filter(o => o.status === st).length; });
+      return row;
+    });
 
     /* ══════════════════════════════════════
        BLOCK D — group-by aggregations
@@ -241,22 +236,25 @@ router.get('/overview', async (req, res, next) => {
       .slice(0, 8)
       .map(p => ({ name: p.name.slice(0, 14), stock: p.stockQty, min: p.minStockQty, value: Math.round(p.stockQty * p.buyPrice), alert: p.stockQty <= p.minStockQty }));
 
-    /* Inventory trend */
-    const inventoryTrend = [];
-    for (let i = 5; i >= 0; i--) {
-      const start = mStart(curY, curM - i);
-      const end   = mEnd(curY, curM - i);
-      const [inAgg, outAgg] = await Promise.all([
-        prisma.stockMovement.aggregate({ where: { companyId, type: 'IN',  createdAt: { gte: start, lte: end } }, _sum: { quantity: true } }),
-        prisma.stockMovement.aggregate({ where: { companyId, type: 'OUT', createdAt: { gte: start, lte: end } }, _sum: { quantity: true } }),
-      ]);
-      inventoryTrend.push({
-        month:   mLabel(curY, curM - i),
-        entrees: inAgg._sum.quantity  || 0,
-        sorties: outAgg._sum.quantity || 0,
-        net:    (inAgg._sum.quantity || 0) - (outAgg._sum.quantity || 0),
-      });
-    }
+    /* Inventory trend — single pair of queries + JS grouping */
+    const [stockIn6m, stockOut6m] = await Promise.all([
+      prisma.stockMovement.findMany({
+        where: { companyId, type: 'IN',  createdAt: { gte: sixMonthsAgo } },
+        select: { createdAt: true, quantity: true },
+      }),
+      prisma.stockMovement.findMany({
+        where: { companyId, type: 'OUT', createdAt: { gte: sixMonthsAgo } },
+        select: { createdAt: true, quantity: true },
+      }),
+    ]);
+    const inventoryTrend = Array.from({length: 6}, (_, i) => {
+      const raw = curM - 5 + i;
+      const my = curY + Math.floor(raw / 12); const mm = ((raw % 12) + 12) % 12;
+      const key = `${my}-${mm}`;
+      const inQty  = stockIn6m.filter(s => mKey(s.createdAt) === key).reduce((sum, s) => sum + (s.quantity || 0), 0);
+      const outQty = stockOut6m.filter(s => mKey(s.createdAt) === key).reduce((sum, s) => sum + (s.quantity || 0), 0);
+      return { month: mLabel(my, mm), entrees: inQty, sorties: outQty, net: inQty - outQty };
+    });
 
     /* Cost distribution */
     const [payrollAgg, maintCostAgg] = await Promise.all([
