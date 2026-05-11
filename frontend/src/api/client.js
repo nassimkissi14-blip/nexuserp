@@ -232,4 +232,10 @@ export const gpaoAPI = {
   charges:        ()         => apiClient.get('/gpao/charges'),
 };
 
+export const departmentsAPI = {
+  getAllConfigs: ()           => apiClient.get('/departments/config'),
+  getConfig:    (name)       => apiClient.get(`/departments/config/${encodeURIComponent(name)}`),
+  saveConfig:   (name, data) => apiClient.put(`/departments/config/${encodeURIComponent(name)}`, data),
+};
+
 export default apiClient;

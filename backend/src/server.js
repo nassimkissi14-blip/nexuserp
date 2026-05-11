@@ -54,6 +54,7 @@ import auditRoutes from './routes/audit.routes.js';
 import { initSocketHandlers } from './socket/index.js';
 import simulationRoutes from './routes/simulation.routes.js';
 import gpaoRoutes from './routes/gpao.routes.js';
+import departmentsRoutes from './routes/departments.routes.js';
 import { initErpSimulator } from './services/erpSimulator.js';
 import { initArenaSimulator } from './services/arenaSimulator.js';
 import { auditLog } from './middleware/audit.middleware.js';
@@ -132,8 +133,9 @@ app.use(`${API}/resources`, resourcesRoutes);
 app.use(`${API}/qr`,        qrRoutes);
 app.use(`${API}/iot`,       iotRoutes);
 app.use(`${API}/import`,    importRoutes);
-app.use(`${API}/audit`,      auditRoutes);
-app.use(`${API}/simulation`, simulationRoutes);
+app.use(`${API}/audit`,       auditRoutes);
+app.use(`${API}/simulation`,  simulationRoutes);
+app.use(`${API}/departments`, departmentsRoutes);
 
 app.get('/health', (req, res) => res.json({ status: 'ok', version: '5.0.0' }));
 

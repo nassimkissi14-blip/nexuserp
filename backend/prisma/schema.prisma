@@ -58,8 +58,30 @@ model Company {
   qrSubDepts       QrSubDept[]
   iotSensors       IoTSensor[]
   simulationSessions SimulationSession[]
+  departmentConfigs DepartmentConfig[]
 
   @@map("companies")
+}
+
+model DepartmentConfig {
+  id          String   @id @default(cuid())
+  companyId   String
+  name        String
+  description String?
+  headName    String?
+  email       String?
+  phone       String?
+  location    String?
+  budgetTarget Float?
+  color       String?
+  goals       String?
+  updatedAt   DateTime @updatedAt
+  updatedBy   String?
+
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, name])
+  @@map("department_configs")
 }
 
 enum SubscriptionPlan {
