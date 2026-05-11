@@ -118,10 +118,37 @@ router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, re
     if (existing) return res.status(400).json({ success: false, message: 'Email déjà utilisé' });
     const hashed = await bcrypt.hash(password || 'nexuserp2025', 12);
     const user = await prisma.user.create({
-      data: { firstName, lastName, email, password: hashed, role: role || 'OPERATOR', department: department || null, companyId: req.companyId },
+      data: { firstName, lastName, email, password: hashed, role: role || 'OPERATOR', department: department || null, companyId: req.companyId, isActive: false },
       select: { id: true, firstName: true, lastName: true, email: true, role: true, department: true, isActive: true, createdAt: true },
     });
-    res.status(201).json({ success: true, data: user });
+
+    // Notify HR managers of new pending user
+    const io = req.app.get('io');
+    const hrManagers = await prisma.user.findMany({
+      where: {
+        companyId: req.companyId, isActive: true,
+        OR: [
+          { role: { in: ['ADMIN', 'SUPER_ADMIN', 'DIRECTOR', 'MANAGER'] } },
+          { department: { contains: 'RH', mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true },
+    });
+    await Promise.all(hrManagers.map(async (u) => {
+      if (u.id === req.user.id) return;
+      const notif = await prisma.notification.create({
+        data: {
+          userId: u.id,
+          title: '👤 Nouvelle demande d\'accès',
+          message: `${firstName} ${lastName} (${department || 'sans département'}) attend votre approbation.`,
+          type: 'INFO',
+          link: '/rh/pending',
+        },
+      });
+      io?.to(`user:${u.id}`).emit('notification:new', notif);
+    }));
+
+    res.status(201).json({ success: true, data: user, pending: true });
   } catch (error) { next(error); }
 });
 
