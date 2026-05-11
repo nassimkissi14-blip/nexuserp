@@ -234,8 +234,11 @@ export default function DashboardPage() {
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['analytics-simple', refreshKey, period],
     queryFn: () => fetchAnalytics(period),
-    staleTime: 30000,
+    staleTime: 0,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
     refetchInterval: 60000,
+    retry: 2,
     enabled: isFullDash,
   });
 
