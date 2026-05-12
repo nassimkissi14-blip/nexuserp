@@ -135,8 +135,9 @@ import SimulationDashboardPage from './pages/simulation/SimulationDashboardPage.
 
 
 
+import { keepPreviousData } from '@tanstack/react-query';
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
+  defaultOptions: { queries: { retry: 1, staleTime: 30_000, placeholderData: keepPreviousData } },
 });
 
 // Page Coming Soon générique
