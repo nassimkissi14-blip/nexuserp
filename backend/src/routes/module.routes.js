@@ -160,6 +160,18 @@ router.patch('/submodules/:submoduleId/toggle', authenticate, authorize('ADMIN',
   } catch (error) { next(error); }
 });
 
+// PATCH /modules/:moduleId/config — save module-specific config
+router.patch('/:moduleId/config', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'DIRECTOR', 'MANAGER'), async (req, res, next) => {
+  try {
+    const { moduleId } = req.params;
+    const updated = await prisma.module.update({
+      where: { id: moduleId },
+      data: { config: req.body },
+    });
+    res.json({ success: true, data: updated });
+  } catch (error) { next(error); }
+});
+
 router.patch('/:moduleId/toggle', authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'DIRECTOR'), async (req, res, next) => {
   try {
     const { moduleId } = req.params;

@@ -41,6 +41,7 @@ export const modulesAPI = {
   toggle: (moduleId) => apiClient.patch(`/modules/${moduleId}/toggle`),
   toggleSubmodule: (submoduleId) => apiClient.patch(`/modules/submodules/${submoduleId}/toggle`),
   reorder: (order) => apiClient.patch('/modules/reorder', { order }),
+  saveConfig: (moduleId, config) => apiClient.patch(`/modules/${moduleId}/config`, config),
 };
 
 export const dashboardAPI = {

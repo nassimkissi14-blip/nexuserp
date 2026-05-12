@@ -137,6 +137,7 @@ model Module {
   color       String?
   sortOrder   Int         @default(0)
   isCore      Boolean     @default(false)
+  config      Json?
 
   subModules      SubModule[]
   companyModules  CompanyModule[]
