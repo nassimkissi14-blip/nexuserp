@@ -381,4 +381,75 @@ router.get('/dashboard', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ─── RELIABILITY: MTBF & MTTR ────────────────────────────────────────────────
+router.get('/reliability', authenticate, async (req, res, next) => {
+  try {
+    const cid = req.companyId;
+
+    const equipment = await prisma.equipment.findMany({
+      where: { companyId: cid, status: { not: 'RETIRED' } },
+      select: {
+        id: true, name: true, code: true, purchaseDate: true,
+        maintenanceRequests: {
+          where: { type: { in: ['BREAKDOWN', 'CORRECTIVE'] } },
+          select: { reportedAt: true, resolvedAt: true, status: true },
+          orderBy: { reportedAt: 'asc' },
+        },
+      },
+    });
+
+    const result = equipment.map(eq => {
+      const failures = eq.maintenanceRequests;
+      const resolved = failures.filter(f => f.resolvedAt);
+
+      // MTTR: moyenne (resolvedAt - reportedAt) en heures
+      let mttr = null;
+      if (resolved.length > 0) {
+        const totalRepairMs = resolved.reduce((sum, f) => {
+          return sum + (new Date(f.resolvedAt) - new Date(f.reportedAt));
+        }, 0);
+        mttr = totalRepairMs / resolved.length / (1000 * 3600); // en heures
+      }
+
+      // MTBF: temps total d'opération / nombre de pannes
+      let mtbf = null;
+      if (failures.length > 0) {
+        const start = eq.purchaseDate ? new Date(eq.purchaseDate) : new Date(failures[0].reportedAt);
+        const end   = new Date();
+        const operatingHours = (end - start) / (1000 * 3600);
+        const totalRepairHours = resolved.reduce((sum, f) => {
+          return f.resolvedAt ? sum + (new Date(f.resolvedAt) - new Date(f.reportedAt)) / (1000 * 3600) : sum;
+        }, 0);
+        const uptime = operatingHours - totalRepairHours;
+        mtbf = uptime / failures.length;
+      }
+
+      // Disponibilité = MTBF / (MTBF + MTTR) × 100
+      let availability = null;
+      if (mtbf !== null && mttr !== null && (mtbf + mttr) > 0) {
+        availability = (mtbf / (mtbf + mttr)) * 100;
+      }
+
+      return {
+        equipmentId: eq.id,
+        name: eq.name,
+        code: eq.code,
+        failureCount: failures.length,
+        resolvedCount: resolved.length,
+        mtbf: mtbf !== null ? Math.round(mtbf * 10) / 10 : null,
+        mttr: mttr !== null ? Math.round(mttr * 10) / 10 : null,
+        availability: availability !== null ? Math.round(availability * 10) / 10 : null,
+      };
+    });
+
+    // Totaux globaux
+    const withMttr  = result.filter(r => r.mttr !== null);
+    const withMtbf  = result.filter(r => r.mtbf !== null);
+    const globalMttr = withMttr.length > 0 ? Math.round(withMttr.reduce((s, r) => s + r.mttr, 0) / withMttr.length * 10) / 10 : null;
+    const globalMtbf = withMtbf.length > 0 ? Math.round(withMtbf.reduce((s, r) => s + r.mtbf, 0) / withMtbf.length * 10) / 10 : null;
+
+    res.json({ success: true, data: { equipment: result, globalMtbf, globalMttr } });
+  } catch (err) { next(err); }
+});
+
 export default router;

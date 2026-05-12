@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, X, Wrench, AlertTriangle, CheckCircle, Clock,
   Activity, Settings, FileText, RefreshCw, Zap,
-  ShieldAlert, Calendar, BarChart2, ChevronDown, ChevronRight
+  ShieldAlert, Calendar, BarChart2, ChevronDown, ChevronRight, TrendingUp
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useConfirm } from '../../components/ui/ConfirmModal.jsx';
@@ -25,6 +25,7 @@ const api = {
   updateOrder: (id, d)   => apiClient.patch(`/maintenance/orders/${id}`, d),
   deleteOrder: (id)      => apiClient.delete(`/maintenance/orders/${id}`),
   logs:        (p)       => apiClient.get('/maintenance/logs', { params: p }),
+  reliability: ()        => apiClient.get('/maintenance/reliability'),
 };
 
 /* ── Constants ───────────────────────────────────────────────────── */
@@ -416,12 +417,14 @@ export default function MaintenancePage() {
   const { data: equipData }  = useQuery({ queryKey: ['equipment'],     queryFn: () => api.equipment() });
   const { data: reqData }    = useQuery({ queryKey: ['maint-requests'],queryFn: () => api.requests() });
   const { data: orderData }  = useQuery({ queryKey: ['maint-orders'],  queryFn: () => api.orders() });
-  const { data: logsData }   = useQuery({ queryKey: ['maint-logs'],    queryFn: () => api.logs({ limit: 20 }) });
+  const { data: logsData }        = useQuery({ queryKey: ['maint-logs'],        queryFn: () => api.logs({ limit: 20 }) });
+  const { data: reliabilityData } = useQuery({ queryKey: ['maint-reliability'], queryFn: api.reliability, enabled: tab === 'reliability' });
 
-  const equipment = equipData?.data  || [];
-  const requests  = reqData?.data    || [];
-  const orders    = orderData?.data  || [];
-  const logs      = logsData?.data   || [];
+  const equipment   = equipData?.data        || [];
+  const requests    = reqData?.data          || [];
+  const orders      = orderData?.data        || [];
+  const logs        = logsData?.data         || [];
+  const reliability = reliabilityData?.data  || null;
 
   /* ── Mutations */
   const createEquip = useMutation({
@@ -484,11 +487,12 @@ export default function MaintenancePage() {
     .sort((a, b) => a.daysLeft - b.daysLeft);
 
   const tabs = [
-    { key: 'overview',   label: 'Vue d\'ensemble', icon: <Activity size={14} /> },
-    { key: 'equipment',  label: 'Équipements',      icon: <Settings size={14} /> },
-    { key: 'requests',   label: 'Demandes',          icon: <AlertTriangle size={14} /> },
-    { key: 'orders',     label: 'Ordres',            icon: <Wrench size={14} /> },
-    { key: 'history',    label: 'Historique',        icon: <FileText size={14} /> },
+    { key: 'overview',     label: 'Vue d\'ensemble', icon: <Activity size={14} /> },
+    { key: 'equipment',    label: 'Équipements',      icon: <Settings size={14} /> },
+    { key: 'requests',     label: 'Demandes',          icon: <AlertTriangle size={14} /> },
+    { key: 'orders',       label: 'Ordres',            icon: <Wrench size={14} /> },
+    { key: 'history',      label: 'Historique',        icon: <FileText size={14} /> },
+    { key: 'reliability',  label: 'MTBF / MTTR',       icon: <TrendingUp size={14} /> },
   ];
 
   return (
@@ -945,6 +949,93 @@ export default function MaintenancePage() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════
+          TAB: RELIABILITY (MTBF / MTTR)
+      ══════════════════════════════════════════ */}
+      {tab === 'reliability' && (
+        <div>
+          {/* KPIs globaux */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
+            {[
+              { label: 'MTBF Global', value: reliability?.globalMtbf != null ? `${reliability.globalMtbf} h` : '—', sub: 'Temps moyen entre pannes', color: '#6366f1', icon: '⏱️' },
+              { label: 'MTTR Global', value: reliability?.globalMttr != null ? `${reliability.globalMttr} h` : '—', sub: 'Temps moyen de réparation', color: '#f59e0b', icon: '🔧' },
+              { label: 'Disponibilité', value: reliability?.equipment?.length > 0
+                  ? (() => { const withA = reliability.equipment.filter(e => e.availability != null); return withA.length > 0 ? `${Math.round(withA.reduce((s,e) => s + e.availability, 0) / withA.length * 10)/10} %` : '—'; })()
+                  : '—', sub: 'MTBF / (MTBF + MTTR)', color: '#10b981', icon: '✅' },
+            ].map(k => (
+              <div key={k.label} style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 12, padding: 20 }}>
+                <div style={{ fontSize: 22, marginBottom: 6 }}>{k.icon}</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: k.color }}>{k.value}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#f1f5f9', marginTop: 2 }}>{k.label}</div>
+                <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{k.sub}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Formules */}
+          <div style={{ background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 10, padding: '12px 16px', marginBottom: 20, fontSize: 12, color: '#a5b4fc', display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+            <span>📐 <strong>MTBF</strong> = Temps opérationnel ÷ Nombre de pannes</span>
+            <span>📐 <strong>MTTR</strong> = Σ(Temps réparation) ÷ Nombre de réparations</span>
+            <span>📐 <strong>Disponibilité</strong> = MTBF ÷ (MTBF + MTTR) × 100</span>
+          </div>
+
+          {/* Tableau par équipement */}
+          <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 12, overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #334155' }}>
+                  {['Équipement', 'Code', 'Pannes', 'Résolues', 'MTBF (h)', 'MTTR (h)', 'Disponibilité'].map(h => (
+                    <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.7 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {!reliability ? (
+                  <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', color: '#64748b' }}>Chargement...</td></tr>
+                ) : reliability.equipment?.length === 0 ? (
+                  <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', color: '#64748b' }}>Aucun équipement</td></tr>
+                ) : reliability.equipment?.map(eq => (
+                  <tr key={eq.equipmentId} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                    <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600, color: '#f1f5f9' }}>{eq.name}</td>
+                    <td style={{ padding: '12px 16px', fontSize: 12, color: '#64748b', fontFamily: 'monospace' }}>{eq.code}</td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <span style={{ background: eq.failureCount > 0 ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.1)', color: eq.failureCount > 0 ? '#f87171' : '#34d399', borderRadius: 6, padding: '2px 8px', fontSize: 12, fontWeight: 600 }}>
+                        {eq.failureCount}
+                      </span>
+                    </td>
+                    <td style={{ padding: '12px 16px', fontSize: 12, color: '#94a3b8' }}>{eq.resolvedCount}</td>
+                    <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 700, color: '#6366f1' }}>
+                      {eq.mtbf != null ? eq.mtbf : <span style={{ color: '#475569' }}>—</span>}
+                    </td>
+                    <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 700, color: '#f59e0b' }}>
+                      {eq.mttr != null ? eq.mttr : <span style={{ color: '#475569' }}>—</span>}
+                    </td>
+                    <td style={{ padding: '12px 16px' }}>
+                      {eq.availability != null ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ flex: 1, height: 6, background: '#0f172a', borderRadius: 3, overflow: 'hidden', maxWidth: 80 }}>
+                            <div style={{ height: '100%', width: `${Math.min(eq.availability, 100)}%`, background: eq.availability >= 90 ? '#10b981' : eq.availability >= 70 ? '#f59e0b' : '#ef4444', borderRadius: 3 }} />
+                          </div>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: eq.availability >= 90 ? '#10b981' : eq.availability >= 70 ? '#f59e0b' : '#ef4444' }}>
+                            {eq.availability} %
+                          </span>
+                        </div>
+                      ) : <span style={{ color: '#475569', fontSize: 12 }}>—</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ marginTop: 12, fontSize: 11, color: '#475569', textAlign: 'center' }}>
+            * Basé sur les demandes de type Panne/Correctif avec date de résolution enregistrée
+          </div>
         </div>
       )}
 
